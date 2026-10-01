@@ -6,6 +6,7 @@ Delegate coding tasks from your dsh agent to the local ZCode Agent. The dsh agen
 
 > **dsh delegates. ZCode codes. dsh reviews.**
 
+[![CI](https://github.com/Sandyzzx/dsh-zcode-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Sandyzzx/dsh-zcode-bridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)](#)
