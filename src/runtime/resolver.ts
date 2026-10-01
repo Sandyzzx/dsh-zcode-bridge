@@ -46,7 +46,12 @@ const PERSISTED_RUNTIME_KEYS = [
  * remain a fallback for standalone use and migration from older installs.
  */
 export function loadPersistedRuntimeEnvironment(source: NodeJS.ProcessEnv, homeDir = homedir()): NodeJS.ProcessEnv {
-  const settingsPaths = [path.join(bridgeSettingsDir(homeDir), "runtime-config.json")];
+  const settingsPaths = [
+    path.join(bridgeSettingsDir(homeDir), "runtime-config.json"),
+    // Migration: the upstream Codex plugin kept its config under ~/.codex;
+    // its ZCode runtime paths remain valid for this fork.
+    path.join(homeDir, ".codex", "codex-zcode-bridge", "runtime-config.json"),
+  ];
   const legacyDataRoot = source["ZCODE_BRIDGE_DATA_DIR"]?.trim();
   if (legacyDataRoot && path.isAbsolute(legacyDataRoot)) {
     settingsPaths.push(path.join(legacyDataRoot, "runtime-config.json"));

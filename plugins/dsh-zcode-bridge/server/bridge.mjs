@@ -21531,8 +21531,9 @@ function toError(value) {
 }
 
 // src/mcp/main.ts
+import { realpathSync as realpathSync2 } from "node:fs";
 import path8 from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/runtime/resolver.ts
 import { accessSync, existsSync, readFileSync, statSync } from "node:fs";
@@ -21571,7 +21572,12 @@ var PERSISTED_RUNTIME_KEYS = [
   "ZCODE_BRIDGE_TIMEOUT_MS"
 ];
 function loadPersistedRuntimeEnvironment(source, homeDir = homedir()) {
-  const settingsPaths = [path.join(bridgeSettingsDir(homeDir), "runtime-config.json")];
+  const settingsPaths = [
+    path.join(bridgeSettingsDir(homeDir), "runtime-config.json"),
+    // Migration: the upstream Codex plugin kept its config under ~/.codex;
+    // its ZCode runtime paths remain valid for this fork.
+    path.join(homeDir, ".codex", "codex-zcode-bridge", "runtime-config.json")
+  ];
   const legacyDataRoot = source["ZCODE_BRIDGE_DATA_DIR"]?.trim();
   if (legacyDataRoot && path.isAbsolute(legacyDataRoot)) {
     settingsPaths.push(path.join(legacyDataRoot, "runtime-config.json"));
@@ -24455,7 +24461,16 @@ async function main() {
   process.once("SIGTERM", () => shutdown("SIGTERM"));
   console.error("[bridge] dsh-zcode-bridge stdio MCP server ready");
 }
-var isEntry = process.argv[1] !== void 0 && import.meta.url === pathToFileURL(path8.resolve(process.argv[1])).href;
+var isEntry = process.argv[1] !== void 0 && sameRealPath(import.meta.url, process.argv[1]);
+function sameRealPath(moduleUrl, argvPath) {
+  try {
+    const modulePath = realpathSync2(fileURLToPath3(moduleUrl));
+    const entryPath = realpathSync2(path8.resolve(argvPath));
+    return process.platform === "win32" ? modulePath.toLocaleLowerCase("en-US") === entryPath.toLocaleLowerCase("en-US") : modulePath === entryPath;
+  } catch {
+    return false;
+  }
+}
 if (isEntry) {
   void main().catch((error2) => {
     console.error(`[bridge] fatal: ${error2 instanceof Error ? error2.stack ?? error2.message : String(error2)}`);
