@@ -38,6 +38,12 @@ export interface TaskManagerOptions {
   /** Reconcile/pump interval; 0 disables the timer (tests drive manually). */
   pollIntervalMs?: number;
   now?: () => Date;
+  /**
+   * Grace window after an attempt starts during which a missing or dead
+   * worker pid must not finalize worker_lost. Defaults to 10,000 ms; 0
+   * restores immediate finalization.
+   */
+  workerStartGraceMs?: number;
   /** Maximum simultaneous detached workers in this Bridge process. Defaults to 8. */
   maxConcurrentWorkers?: number;
 }
@@ -51,6 +57,7 @@ export class BridgeTaskManager implements ProgressTaskManager {
   readonly #now: () => Date;
   readonly #dataRoot: string;
   readonly #maxConcurrentWorkers: number;
+  readonly #workerStartGraceMs: number;
   #timer: NodeJS.Timeout | null = null;
   #mutex: Promise<unknown> = Promise.resolve();
 
@@ -65,6 +72,10 @@ export class BridgeTaskManager implements ProgressTaskManager {
     this.#maxConcurrentWorkers = options.maxConcurrentWorkers ?? 8;
     if (!Number.isInteger(this.#maxConcurrentWorkers) || this.#maxConcurrentWorkers < 1 || this.#maxConcurrentWorkers > 8) {
       throw new RangeError("maxConcurrentWorkers must be an integer from 1 to 8");
+    }
+    this.#workerStartGraceMs = options.workerStartGraceMs ?? 10_000;
+    if (!Number.isInteger(this.#workerStartGraceMs) || this.#workerStartGraceMs < 0) {
+      throw new RangeError("workerStartGraceMs must be a non-negative integer");
     }
     const pollIntervalMs = options.pollIntervalMs ?? 1_000;
     if (pollIntervalMs > 0) {
@@ -457,6 +468,14 @@ export class BridgeTaskManager implements ProgressTaskManager {
     const pid = status.worker_pid;
     const alive = pid !== null && this.#isProcessRunning(pid);
     if (alive) return; // still running (possibly from before a manager restart)
+    // Cold-start grace. Several Bridge processes may share one data root, and
+    // any of them can reconcile a task between the "running" status write and
+    // the pid write in #startWorkerLocked (worker_pid null), while a freshly
+    // spawned worker may die or look dead before it wrote started.json. A
+    // state this fresh must not finalize worker_lost; the next tick
+    // re-checks, so a genuine loss is reported once the grace expires.
+    const startedAtMs = status.started_at === null ? Number.NaN : Date.parse(status.started_at);
+    if (Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs) return;
     const task = this.#store.readTask(taskId);
     const finishedAt = this.#now().toISOString();
     const workerStderr = this.#store.readAttemptText(taskId, status.attempt, "worker-stderr.log") ?? "";

@@ -331,6 +331,62 @@ test("a dead worker without a terminal result reconciles to failed/worker_lost a
   }
 });
 
+test("a mid-spawn running status with no pid is not lost until the start grace expires", async () => {
+  // Reproduces the shared-dataRoot race: another Bridge process observed the
+  // status between the "running" write and the pid write and finalized
+  // worker_lost within milliseconds. The grace window must keep it running.
+  const fx = await makeManagerFixture({ workerStartGraceMs: 30_000 });
+  try {
+    await fx.manager.createTask(fx.makeTask());
+    const pid = fx.spawned[0]!.pid;
+    fx.store.writeStatus("task_1", { worker_pid: null });
+    fx.pidsAlive.delete(pid);
+    await fx.manager.recoverTasks();
+    assert.equal((await fx.manager.getStatus("task_1")).status, "running");
+
+    fx.advanceMs(31_000);
+    await fx.manager.recoverTasks();
+    const status = await fx.manager.getStatus("task_1");
+    assert.equal(status.status, "failed");
+    assert.equal(status.error_code, "worker_lost");
+    assert.match(status.error!, /worker pid null/);
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("a worker that dies during the start grace window is finalized once the grace expires", async () => {
+  const fx = await makeManagerFixture({ workerStartGraceMs: 30_000 });
+  try {
+    await fx.manager.createTask(fx.makeTask());
+    fx.pidsAlive.delete(fx.spawned[0]!.pid); // worker died right after spawn
+    await fx.manager.recoverTasks();
+    assert.equal((await fx.manager.getStatus("task_1")).status, "running", "fresh death must not finalize yet");
+
+    fx.advanceMs(31_000);
+    await fx.manager.recoverTasks();
+    const status = await fx.manager.getStatus("task_1");
+    assert.equal(status.status, "failed");
+    assert.equal(status.error_code, "worker_lost");
+  } finally {
+    await fx.cleanup();
+  }
+});
+
+test("a persisted result written during the start grace window still wins immediately", async () => {
+  const fx = await makeManagerFixture({ workerStartGraceMs: 30_000 });
+  try {
+    await fx.manager.createTask(fx.makeTask());
+    await fx.runWorker("task_1", new FakeAdapter()); // writes the terminal result
+    await fx.manager.recoverTasks();
+    const status = await fx.manager.getStatus("task_1");
+    assert.equal(status.status, "completed");
+    assert.ok(!status.error_code, "a completed run must not carry an error code");
+  } finally {
+    await fx.cleanup();
+  }
+});
+
 test("recovery of persisted queued tasks starts them FIFO; a live worker keeps its slot", async () => {
   const fx = await freshFixture();
   try {

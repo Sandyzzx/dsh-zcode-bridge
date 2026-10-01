@@ -22748,6 +22748,7 @@ var BridgeTaskManager = class {
   #now;
   #dataRoot;
   #maxConcurrentWorkers;
+  #workerStartGraceMs;
   #timer = null;
   #mutex = Promise.resolve();
   constructor(options) {
@@ -22761,6 +22762,10 @@ var BridgeTaskManager = class {
     this.#maxConcurrentWorkers = options.maxConcurrentWorkers ?? 8;
     if (!Number.isInteger(this.#maxConcurrentWorkers) || this.#maxConcurrentWorkers < 1 || this.#maxConcurrentWorkers > 8) {
       throw new RangeError("maxConcurrentWorkers must be an integer from 1 to 8");
+    }
+    this.#workerStartGraceMs = options.workerStartGraceMs ?? 1e4;
+    if (!Number.isInteger(this.#workerStartGraceMs) || this.#workerStartGraceMs < 0) {
+      throw new RangeError("workerStartGraceMs must be a non-negative integer");
     }
     const pollIntervalMs = options.pollIntervalMs ?? 1e3;
     if (pollIntervalMs > 0) {
@@ -23116,6 +23121,8 @@ var BridgeTaskManager = class {
     const pid = status.worker_pid;
     const alive = pid !== null && this.#isProcessRunning(pid);
     if (alive) return;
+    const startedAtMs = status.started_at === null ? Number.NaN : Date.parse(status.started_at);
+    if (Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs) return;
     const task = this.#store.readTask(taskId);
     const finishedAt = this.#now().toISOString();
     const workerStderr = this.#store.readAttemptText(taskId, status.attempt, "worker-stderr.log") ?? "";

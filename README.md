@@ -84,6 +84,7 @@ For richer delegation discipline (polling patterns, interaction replies, model-s
 
 - The ZCode Desktop sidebar may not immediately show a new session. The Bridge best-effort syncs the local task index; Desktop controls when the list refreshes.
 - ZCode Start Plan is currently unavailable through the Bridge.
+- A worker gets a 10-second cold-start grace window (`workerStartGraceMs`): within it, a missing or just-exited pid does not immediately finalize `worker_lost`; later reconcile ticks re-check. This prevents several Bridge processes sharing one data root (for example separate Codex and dsh instances) from killing a task during the spawn window; there is still no global lock between processes, so do not submit conflicting tasks in parallel.
 
 ## Security and limitations
 

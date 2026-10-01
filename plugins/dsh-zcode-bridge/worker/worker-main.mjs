@@ -1,5 +1,6 @@
 // src/adapters/zcode-app-server-adapter.ts
 import { spawn as spawn2 } from "node:child_process";
+import { homedir as homedir2 } from "node:os";
 
 // src/adapters/agent-report.ts
 var TEST_STATUSES = /* @__PURE__ */ new Set(["passed", "failed", "not_run"]);
@@ -1139,6 +1140,7 @@ var ZCodeAppServerAdapter = class {
   #onEvent;
   #timeoutMs;
   #childEnvBase;
+  #homeDir;
   #now;
   #resolveInteraction;
   #runs = /* @__PURE__ */ new Map();
@@ -1148,6 +1150,7 @@ var ZCodeAppServerAdapter = class {
     this.#onEvent = options.onEvent ?? (() => void 0);
     this.#timeoutMs = options.timeoutMs ?? null;
     this.#childEnvBase = options.childEnvBase ?? process.env;
+    this.#homeDir = options.homeDir ?? homedir2();
     this.#now = options.now ?? (() => /* @__PURE__ */ new Date());
     this.#resolveInteraction = options.resolveInteraction;
   }
@@ -1252,7 +1255,7 @@ var ZCodeAppServerAdapter = class {
     let warningTimer;
     let desktopTask = null;
     try {
-      const runtimeEnv = loadPersistedRuntimeEnvironment(this.#childEnvBase);
+      const runtimeEnv = loadPersistedRuntimeEnvironment(this.#childEnvBase, this.#homeDir);
       const timeoutMs = this.#timeoutMs ?? resolveTaskTimeout(task, runtimeEnv);
       const config = await this.#resolver.resolve();
       const preferences = resolveSessionPreferences(task.model, runtimeEnv);
