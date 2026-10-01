@@ -49,6 +49,9 @@ export interface TaskManagerOptions {
 }
 
 export class BridgeTaskManager implements ProgressTaskManager {
+  /** How long a respawn claim counts as in-flight across Bridge processes. */
+  static readonly RESPAWN_IN_FLIGHT_MS = 10_000;
+
   readonly #store: TaskStore;
   readonly #workspaceProvider: WorkspaceProvider;
   readonly #spawnWorker: SpawnWorker;
@@ -475,7 +478,32 @@ export class BridgeTaskManager implements ProgressTaskManager {
     // state this fresh must not finalize worker_lost; the next tick
     // re-checks, so a genuine loss is reported once the grace expires.
     const startedAtMs = status.started_at === null ? Number.NaN : Date.parse(status.started_at);
-    if (Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs) return;
+    const withinGrace = Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs;
+    const workerBegan = this.#store.readAttemptMeta(taskId, status.attempt, "started.json") !== null;
+    if (pid === null && withinGrace) return; // possibly still inside the spawn window
+    if (pid !== null && workerBegan && withinGrace) return; // outcome may still be in flight
+    // A worker that exited before writing started.json never ran the task.
+    // Spawn one replacement for the same attempt, claim-gated so the Bridge
+    // processes sharing this data root cannot double-spawn; a replacement
+    // that is still in flight (fresh claim) is left alone for the next tick.
+    // A worker that did start is never auto-respawned: its attempt may have
+    // already touched the workspace, so only the master decides to retry.
+    if (!workerBegan) {
+      if (this.#store.claimAttemptRespawn(taskId, status.attempt)) {
+        const respawned = this.#spawnWorker(this.#dataRoot, taskId, status.attempt);
+        this.#store.writeStatus(taskId, { worker_pid: respawned.pid });
+        this.#store.appendEvent(
+          taskId,
+          "worker_respawned",
+          `Bridge respawned the worker: previous pid ${String(pid)} exited before writing any task state`,
+          { worker_pid: respawned.pid, previous_pid: pid, attempt: status.attempt },
+        );
+        return;
+      }
+      const claimedAt = this.#store.respawnClaimedAt(taskId, status.attempt);
+      if (claimedAt && Date.now() - claimedAt.getTime() < BridgeTaskManager.RESPAWN_IN_FLIGHT_MS) return; // another process's respawn is in flight
+      // Stale claim and still no started.json: the replacement died too.
+    }
     const task = this.#store.readTask(taskId);
     const finishedAt = this.#now().toISOString();
     const workerStderr = this.#store.readAttemptText(taskId, status.attempt, "worker-stderr.log") ?? "";

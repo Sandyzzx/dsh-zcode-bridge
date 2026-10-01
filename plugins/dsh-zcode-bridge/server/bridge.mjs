@@ -22058,6 +22058,31 @@ var TaskStore = class {
     if (!existsSync2(file)) return null;
     return readFileSync2(file, "utf8");
   }
+  /**
+   * Atomically claims the single worker-respawn slot for an attempt by
+   * creating the marker file with an exclusive flag, so several Bridge
+   * processes sharing this data root can never spawn two replacement
+   * workers. Returns false when the slot is already claimed.
+   */
+  claimAttemptRespawn(taskId, attempt) {
+    const dir = this.attemptDir(taskId, attempt);
+    privateMkdir(dir);
+    try {
+      closeSync(openSync(path2.join(dir, "respawn.claim"), "wx"));
+      return true;
+    } catch (error2) {
+      if (error2.code === "EEXIST") return false;
+      throw error2;
+    }
+  }
+  /** File time of the respawn claim, or null when the attempt is unclaimed. */
+  respawnClaimedAt(taskId, attempt) {
+    try {
+      return statSync2(path2.join(this.attemptDir(taskId, attempt), "respawn.claim")).mtime;
+    } catch {
+      return null;
+    }
+  }
   /** Append-only, byte-bounded. Returns whether the chunk was truncated. */
   appendLog(taskId, kind, text) {
     if (!text) return { truncated: false };
@@ -22739,7 +22764,9 @@ function validateTaskTimeout(value) {
 }
 
 // src/manager/task-manager.ts
-var BridgeTaskManager = class {
+var BridgeTaskManager = class _BridgeTaskManager {
+  /** How long a respawn claim counts as in-flight across Bridge processes. */
+  static RESPAWN_IN_FLIGHT_MS = 1e4;
   #store;
   #workspaceProvider;
   #spawnWorker;
@@ -23122,7 +23149,25 @@ var BridgeTaskManager = class {
     const alive = pid !== null && this.#isProcessRunning(pid);
     if (alive) return;
     const startedAtMs = status.started_at === null ? Number.NaN : Date.parse(status.started_at);
-    if (Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs) return;
+    const withinGrace = Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs;
+    const workerBegan = this.#store.readAttemptMeta(taskId, status.attempt, "started.json") !== null;
+    if (pid === null && withinGrace) return;
+    if (pid !== null && workerBegan && withinGrace) return;
+    if (!workerBegan) {
+      if (this.#store.claimAttemptRespawn(taskId, status.attempt)) {
+        const respawned = this.#spawnWorker(this.#dataRoot, taskId, status.attempt);
+        this.#store.writeStatus(taskId, { worker_pid: respawned.pid });
+        this.#store.appendEvent(
+          taskId,
+          "worker_respawned",
+          `Bridge respawned the worker: previous pid ${String(pid)} exited before writing any task state`,
+          { worker_pid: respawned.pid, previous_pid: pid, attempt: status.attempt }
+        );
+        return;
+      }
+      const claimedAt = this.#store.respawnClaimedAt(taskId, status.attempt);
+      if (claimedAt && Date.now() - claimedAt.getTime() < _BridgeTaskManager.RESPAWN_IN_FLIGHT_MS) return;
+    }
     const task = this.#store.readTask(taskId);
     const finishedAt = this.#now().toISOString();
     const workerStderr = this.#store.readAttemptText(taskId, status.attempt, "worker-stderr.log") ?? "";
