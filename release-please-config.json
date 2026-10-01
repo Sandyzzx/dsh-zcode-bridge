@@ -8,16 +8,11 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "plugins/codex-zcode-bridge/plugin.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "plugins/codex-zcode-bridge/.codex-plugin/plugin.json",
+          "path": "plugins/dsh-zcode-bridge/package.json",
           "jsonpath": "$.version"
         },
         "src/mcp/server.ts",
-        "plugins/codex-zcode-bridge/dist/bridge.mjs"
+        "plugins/dsh-zcode-bridge/server/bridge.mjs"
       ]
     }
   }

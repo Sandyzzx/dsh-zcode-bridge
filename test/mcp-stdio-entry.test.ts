@@ -13,7 +13,7 @@ import test from "node:test";
 import { resolveDataRoot, resolveMaxConcurrentWorkers } from "../src/mcp/main.js";
 
 const MAIN_JS = fileURLToPath(new URL("../../dist/src/mcp/main.js", import.meta.url));
-const PLUGIN_ROOT = fileURLToPath(new URL("../../plugins/codex-zcode-bridge/", import.meta.url));
+const PLUGIN_ROOT = fileURLToPath(new URL("../../plugins/dsh-zcode-bridge/", import.meta.url));
 
 const PROTOCOL_MESSAGES = [
   JSON.stringify({
@@ -108,10 +108,10 @@ test("worker concurrency defaults to eight and rejects out-of-range configuratio
   assert.match(invalid.warning ?? "", /integer from 1 to 8/);
 });
 
-test("marketplace bundle starts from its plugin root without repo-local dependencies", { timeout: 30_000 }, () => {
+test("dsh bundle starts from its plugin root without repo-local dependencies", { timeout: 30_000 }, () => {
   const dataRoot = mkdtempSync(path.join(tmpdir(), "zcode-bridge-plugin-stdio-"));
   try {
-    const run = spawnSync(process.execPath, ["./dist/bridge.mjs"], {
+    const run = spawnSync(process.execPath, ["./server/bridge.mjs"], {
       cwd: PLUGIN_ROOT,
       input: PROTOCOL_MESSAGES,
       encoding: "utf8",

@@ -127,7 +127,7 @@ export class BridgeTaskManager implements ProgressTaskManager {
       }
       this.#store.appendEvent(task.task_id, "queued", "Task accepted and queued", undefined, createdAt);
       this.#store.appendEvent(task.task_id, "workspace_ready", workspaceRef.mode === "worktree"
-        ? "Using the Codex-selected worktree for execution under the requested project"
+        ? "Using the master-selected worktree for execution under the requested project"
         : "Using the requested project directory for execution", {
           project_path: workspaceRef.sourcePath ?? workspaceRef.canonicalPath,
           execution_path: workspaceRef.canonicalPath,
@@ -238,7 +238,7 @@ export class BridgeTaskManager implements ProgressTaskManager {
       if (state !== "answered") {
         throw new TaskManagerError("TASK_STATE", `ZCode interaction request ${input.request_id} was already answered`);
       }
-      this.#store.appendEvent(input.task_id, "interaction_reply_submitted", "Codex submitted a response to the ZCode interaction", {
+      this.#store.appendEvent(input.task_id, "interaction_reply_submitted", "Master agent submitted a response to the ZCode interaction", {
         request_id: input.request_id,
         method: record.method,
         decision: input.decision,
@@ -507,7 +507,7 @@ export class BridgeTaskManager implements ProgressTaskManager {
       if (slots <= 0) break;
       const executionPath = this.#executionPathKeyLocked(taskId);
       // Never run two ZCode sessions against the same mutable directory.
-      // Separate Codex-prepared worktrees and separate project roots can run
+      // Separate master-prepared worktrees and separate project roots can run
       // concurrently, subject to the global worker limit.
       if (occupiedPaths.some((occupied) => pathsOverlap(occupied, executionPath))) continue;
       this.#startWorkerLocked(taskId);
@@ -692,7 +692,7 @@ function buildInteractionAnswer(
 }
 
 function boundedReason(reason: string | undefined): string {
-  return (reason?.trim() || "Codex declined this request").slice(0, 2_000);
+  return (reason?.trim() || "Master agent declined this request").slice(0, 2_000);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -21531,7 +21531,6 @@ function toError(value) {
 }
 
 // src/mcp/main.ts
-import { homedir as homedir3 } from "node:os";
 import path8 from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -21552,6 +21551,9 @@ var BridgeError = class extends Error {
 };
 
 // src/runtime/resolver.ts
+function bridgeSettingsDir(homeDir = homedir()) {
+  return path.join(homeDir, ".dsh", "zcode-bridge");
+}
 var PERSISTED_RUNTIME_KEYS = [
   "ZCODE_BRIDGE_NODE",
   "ZCODE_BRIDGE_ZCODE_CJS",
@@ -21569,7 +21571,7 @@ var PERSISTED_RUNTIME_KEYS = [
   "ZCODE_BRIDGE_TIMEOUT_MS"
 ];
 function loadPersistedRuntimeEnvironment(source, homeDir = homedir()) {
-  const settingsPaths = [path.join(homeDir, ".codex", "codex-zcode-bridge", "runtime-config.json")];
+  const settingsPaths = [path.join(bridgeSettingsDir(homeDir), "runtime-config.json")];
   const legacyDataRoot = source["ZCODE_BRIDGE_DATA_DIR"]?.trim();
   if (legacyDataRoot && path.isAbsolute(legacyDataRoot)) {
     settingsPaths.push(path.join(legacyDataRoot, "runtime-config.json"));
@@ -22811,7 +22813,7 @@ var BridgeTaskManager = class {
         throw error2;
       }
       this.#store.appendEvent(task.task_id, "queued", "Task accepted and queued", void 0, createdAt);
-      this.#store.appendEvent(task.task_id, "workspace_ready", workspaceRef.mode === "worktree" ? "Using the Codex-selected worktree for execution under the requested project" : "Using the requested project directory for execution", {
+      this.#store.appendEvent(task.task_id, "workspace_ready", workspaceRef.mode === "worktree" ? "Using the master-selected worktree for execution under the requested project" : "Using the requested project directory for execution", {
         project_path: workspaceRef.sourcePath ?? workspaceRef.canonicalPath,
         execution_path: workspaceRef.canonicalPath,
         ...workspaceRef.mode === "worktree" ? { worktree_path: workspaceRef.canonicalPath } : {},
@@ -22911,7 +22913,7 @@ var BridgeTaskManager = class {
       if (state !== "answered") {
         throw new TaskManagerError("TASK_STATE", `ZCode interaction request ${input.request_id} was already answered`);
       }
-      this.#store.appendEvent(input.task_id, "interaction_reply_submitted", "Codex submitted a response to the ZCode interaction", {
+      this.#store.appendEvent(input.task_id, "interaction_reply_submitted", "Master agent submitted a response to the ZCode interaction", {
         request_id: input.request_id,
         method: record2.method,
         decision: input.decision
@@ -23307,7 +23309,7 @@ function buildInteractionAnswer(record2, input) {
   return { action: "accept", content: { answers } };
 }
 function boundedReason(reason) {
-  return (reason?.trim() || "Codex declined this request").slice(0, 2e3);
+  return (reason?.trim() || "Master agent declined this request").slice(0, 2e3);
 }
 function asRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
@@ -23340,7 +23342,7 @@ var zcodeTaskInputSchema = strictObject({
   acceptance_criteria: stringArray,
   test_commands: stringArray,
   context: string2().optional()
-}).describe("Full TaskPackage; workspace is the Codex project root. Optional worktree_path is an existing execution directory selected and prepared by Codex; the Bridge never creates or selects worktrees. The five array fields must be present (empty allowed), context is optional.");
+}).describe("Full TaskPackage; workspace is the master agent project root. Optional worktree_path is an existing execution directory selected and prepared by the master agent; the Bridge never creates or selects worktrees. The five array fields must be present (empty allowed), context is optional.");
 var taskIdOnlyInputSchema = strictObject({
   task_id: string2().min(1)
 });
@@ -23485,9 +23487,14 @@ var defaultModelSchema = object({
 });
 
 // src/mcp/server.ts
-var SERVER_NAME = "codex-zcode-bridge";
+var SERVER_NAME = "dsh-zcode-bridge";
 var SERVER_VERSION = "1.0.0"; // x-release-please-version
-var EXECUTION_NOT_VERDICT = "Results describe Bridge/ZCode execution only: status 'completed' means the invocation and report normalization finished, NOT that Codex accepted the work. Codex must independently review the workspace diff and checks before deciding PASS.";
+var SERVER_INSTRUCTIONS = `Delegate bounded development tasks to the local ZCode agent, then track and review them.
+
+Flow: zcode_task to submit (returns a TaskReceipt with task_id), zcode_events to poll progress (use after_seq plus wait_ms up to 25000; interaction_requested events carry pending permission or user-input requests), zcode_result once finished. zcode_continue reuses a task with master feedback; zcode_cancel stops a queued or running task. zcode_doctor gives read-only setup diagnostics. zcode_model_catalog, zcode_default_model, and zcode_set_default_model manage ZCode provider/model selection; per-task model overrides exist in zcode_task.
+
+Discipline: workspace is the project root and the ZCode Desktop project identity; pass worktree_path only if you prepared that worktree yourself \u2014 the Bridge never creates one. 'completed' means execution finished, not that the work is accepted: independently review the diff and run checks before deciding PASS. Reply to permission requests through zcode_interaction_reply only when the user explicitly authorized the action; otherwise deny or ask the user.`;
+var EXECUTION_NOT_VERDICT = "Results describe Bridge/ZCode execution only: status 'completed' means the invocation and report normalization finished, NOT that the master agent accepted the work. The master agent must independently review the workspace diff and checks before deciding PASS.";
 function okResult(data) {
   return {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
@@ -23516,7 +23523,7 @@ async function runTool(operation) {
 function createBridgeServer(options) {
   const manager = options.taskManager;
   const serverInfo = options.serverInfo ?? { name: SERVER_NAME, version: SERVER_VERSION };
-  const server = new McpServer(serverInfo);
+  const server = new McpServer(serverInfo, { instructions: SERVER_INSTRUCTIONS });
   server.registerTool(
     "zcode_doctor",
     {
@@ -23586,7 +23593,7 @@ function createBridgeServer(options) {
     "zcode_task",
     {
       title: "Submit one ZCode coding task",
-      description: `Create a bounded coding task for the local ZCode subordinate agent. workspace is the Codex project root and determines the ZCode Desktop project identity. Codex decides whether to create a worktree; if it does, pass its existing absolute directory as optional worktree_path. The Bridge never creates, selects, or removes a worktree. Without worktree_path, ZCode runs directly in workspace. Optional model selects a ZCode provider_id/model_id for this session without changing the project default. Returns a TaskReceipt; the task runs asynchronously in a detached worker. ${EXECUTION_NOT_VERDICT}`,
+      description: `Create a bounded coding task for the local ZCode subordinate agent. workspace is the master agent project root and determines the ZCode Desktop project identity. The master agent decides whether to create a worktree; if it does, pass its existing absolute directory as optional worktree_path. The Bridge never creates, selects, or removes a worktree. Without worktree_path, ZCode runs directly in workspace. Optional model selects a ZCode provider_id/model_id for this session without changing the project default. Returns a TaskReceipt; the task runs asynchronously in a detached worker. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: zcodeTaskInputSchema,
       outputSchema: taskReceiptSchema
     },
@@ -23631,7 +23638,7 @@ function createBridgeServer(options) {
     "zcode_result",
     {
       title: "Read the terminal ZCode task result",
-      description: `Read the persisted TaskResult for a finished task. Returns TASK_NOT_FINISHED before a terminal state. 'completed' is not a Codex PASS: files_changed, tests, and decisions are normalized claims from the subordinate report and must be verified independently. ${EXECUTION_NOT_VERDICT}`,
+      description: `Read the persisted TaskResult for a finished task. Returns TASK_NOT_FINISHED before a terminal state. 'completed' is not a master-accepted PASS: files_changed, tests, and decisions are normalized claims from the subordinate report and must be verified independently. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: taskIdOnlyInputSchema,
       outputSchema: taskResultSchema
     },
@@ -23641,7 +23648,7 @@ function createBridgeServer(options) {
     "zcode_continue",
     {
       title: "Continue a ZCode task with master feedback",
-      description: `Continue a finished task with master feedback: reuses the task ID and workspace, increments the attempt, and preserves prior evidence. Allowed from completed, failed, or waiting_for_master. A decision flagged by ZCode is never auto-approved; Codex must provide the follow-up instruction. ${EXECUTION_NOT_VERDICT}`,
+      description: `Continue a finished task with master feedback: reuses the task ID and workspace, increments the attempt, and preserves prior evidence. Allowed from completed, failed, or waiting_for_master. A decision flagged by ZCode is never auto-approved; the master agent must provide the follow-up instruction. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: zcodeContinueInputSchema,
       outputSchema: taskReceiptSchema
     },
@@ -23661,7 +23668,7 @@ function createBridgeServer(options) {
     "zcode_progress_probe",
     {
       title: "[Experiment] Check MCP progress display",
-      description: "Temporary read-only experiment. Sends three MCP progress notifications over three seconds to test whether Codex displays server progress while this tool runs. Does not start or modify a ZCode task."
+      description: "Temporary read-only experiment. Sends three MCP progress notifications over three seconds to test whether the host displays server progress while this tool runs. Does not start or modify a ZCode task."
     },
     async (ctx) => {
       const progressToken = ctx.mcpReq._meta?.progressToken;
@@ -23688,7 +23695,7 @@ function createBridgeServer(options) {
             experiment: "mcp-progress-display",
             progress_token_received: progressToken !== void 0,
             notifications_sent: notificationsSent,
-            note: "The tool result confirms server delivery only; check whether Codex displayed progress while it was running."
+            note: "The tool result confirms server delivery only; check whether the host displayed progress while it was running."
           }, null, 2)
         }]
       };
@@ -23737,7 +23744,7 @@ function buildAccountProviderPayload(config2) {
   const revision = typeof table?.revision === "number" ? table.revision : 0;
   const resolvedBuiltinPath = path6.resolve(config2.providerBuiltinConfigFile);
   return {
-    revision: `account:codex-zcode-bridge:${Date.now()}`,
+    revision: `account:dsh-zcode-bridge:${Date.now()}`,
     basedOnZCodeBuiltinRevision: `zcode-builtin:${revision}:${createHash2("sha256").update(resolvedBuiltinPath).digest("hex")}`,
     providers,
     states
@@ -23961,7 +23968,6 @@ function safeError(error2) {
 import { spawn as spawn3 } from "node:child_process";
 import { createHash as createHash3, randomUUID as randomUUID2 } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir as homedir2 } from "node:os";
 import path7 from "node:path";
 var RPC_TIMEOUT_MS = 3e4;
 var PROCESS_CLOSE_TIMEOUT_MS = 1500;
@@ -24124,7 +24130,7 @@ var ZCodeModelSettings = class {
   }
   #updateConfig(update) {
     const operation = this.#writeQueue.then(async () => {
-      const configPath = path7.join(homedir2(), ".codex", "codex-zcode-bridge", "runtime-config.json");
+      const configPath = path7.join(bridgeSettingsDir(), "runtime-config.json");
       await mkdir(path7.dirname(configPath), { recursive: true });
       let config2 = {};
       try {
@@ -24329,7 +24335,7 @@ function modelCatalogCachePath(workspace, config2, env) {
     zcodeHome: env.ZCODE_HOME ?? ""
   });
   const key = createHash3("sha256").update(identity).digest("hex");
-  return path7.join(homedir2(), ".codex", "codex-zcode-bridge", "model-catalog", `${key}.json`);
+  return path7.join(bridgeSettingsDir(), "model-catalog", `${key}.json`);
 }
 async function modelCatalogSourceFingerprint(config2, env) {
   const digest = createHash3("sha256");
@@ -24402,7 +24408,7 @@ function resolveMaxConcurrentWorkers(env) {
 async function main() {
   const runtimeEnv = loadPersistedRuntimeEnvironment(process.env);
   if (process.env["ZCODE_BRIDGE_PLUGIN_MODE"] === "1" && !runtimeEnv["ZCODE_BRIDGE_DATA_DIR"]?.trim()) {
-    runtimeEnv["ZCODE_BRIDGE_DATA_DIR"] = path8.join(homedir3(), ".codex", "codex-zcode-bridge");
+    runtimeEnv["ZCODE_BRIDGE_DATA_DIR"] = bridgeSettingsDir();
   }
   const { dataRoot, warning } = resolveDataRoot(runtimeEnv);
   if (warning) {
@@ -24447,7 +24453,7 @@ async function main() {
   };
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
-  console.error("[bridge] codex-zcode-bridge stdio MCP server ready");
+  console.error("[bridge] dsh-zcode-bridge stdio MCP server ready");
 }
 var isEntry = process.argv[1] !== void 0 && import.meta.url === pathToFileURL(path8.resolve(process.argv[1])).href;
 if (isEntry) {

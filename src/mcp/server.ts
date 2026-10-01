@@ -1,5 +1,5 @@
 // stdio MCP server factory. V0.1 task lifecycle tools remain compatible;
-// MVP 0.3 adds the optional model selector, Codex-selected execution worktree and progress
+// MVP 0.3 adds the optional model selector, master-selected execution worktree and progress
 // events. All tools use strict snake_case
 // schemas, return readable text plus structured content, and map stable
 // TaskManagerError codes onto MCP tool-error results. The TaskManager is
@@ -39,8 +39,17 @@ import type { DoctorReport } from "../runtime/doctor.js";
 import { BridgeError } from "../runtime/errors.js";
 import type { ZCodeModelSettings } from "../runtime/model-settings.js";
 
-export const SERVER_NAME = "codex-zcode-bridge";
+export const SERVER_NAME = "dsh-zcode-bridge";
 export const SERVER_VERSION = "1.0.0"; // x-release-please-version
+
+// Server instructions reach the delegating agent as prompt text (in dsh they
+// join the logged system prompt). Keep them short, factual, and within the
+// dsh-mcp-client maxInstructionBytes budget (32 KiB).
+export const SERVER_INSTRUCTIONS = `Delegate bounded development tasks to the local ZCode agent, then track and review them.
+
+Flow: zcode_task to submit (returns a TaskReceipt with task_id), zcode_events to poll progress (use after_seq plus wait_ms up to 25000; interaction_requested events carry pending permission or user-input requests), zcode_result once finished. zcode_continue reuses a task with master feedback; zcode_cancel stops a queued or running task. zcode_doctor gives read-only setup diagnostics. zcode_model_catalog, zcode_default_model, and zcode_set_default_model manage ZCode provider/model selection; per-task model overrides exist in zcode_task.
+
+Discipline: workspace is the project root and the ZCode Desktop project identity; pass worktree_path only if you prepared that worktree yourself — the Bridge never creates one. 'completed' means execution finished, not that the work is accepted: independently review the diff and run checks before deciding PASS. Reply to permission requests through zcode_interaction_reply only when the user explicitly authorized the action; otherwise deny or ask the user.`;
 
 export interface BridgeServerOptions {
   taskManager: TaskManager & Partial<Pick<ProgressTaskManager, "getEvents" | "replyToInteraction">>;
@@ -50,7 +59,7 @@ export interface BridgeServerOptions {
 }
 
 const EXECUTION_NOT_VERDICT =
-  "Results describe Bridge/ZCode execution only: status 'completed' means the invocation and report normalization finished, NOT that Codex accepted the work. Codex must independently review the workspace diff and checks before deciding PASS.";
+  "Results describe Bridge/ZCode execution only: status 'completed' means the invocation and report normalization finished, NOT that the master agent accepted the work. The master agent must independently review the workspace diff and checks before deciding PASS.";
 
 function okResult(data: Record<string, unknown>): CallToolResult {
   return {
@@ -83,7 +92,7 @@ async function runTool<T>(operation: () => Promise<T>): Promise<CallToolResult> 
 export function createBridgeServer(options: BridgeServerOptions): McpServer {
   const manager = options.taskManager;
   const serverInfo = options.serverInfo ?? { name: SERVER_NAME, version: SERVER_VERSION };
-  const server = new McpServer(serverInfo);
+  const server = new McpServer(serverInfo, { instructions: SERVER_INSTRUCTIONS });
 
   server.registerTool(
     "zcode_doctor",
@@ -159,7 +168,7 @@ export function createBridgeServer(options: BridgeServerOptions): McpServer {
     "zcode_task",
     {
       title: "Submit one ZCode coding task",
-      description: `Create a bounded coding task for the local ZCode subordinate agent. workspace is the Codex project root and determines the ZCode Desktop project identity. Codex decides whether to create a worktree; if it does, pass its existing absolute directory as optional worktree_path. The Bridge never creates, selects, or removes a worktree. Without worktree_path, ZCode runs directly in workspace. Optional model selects a ZCode provider_id/model_id for this session without changing the project default. Returns a TaskReceipt; the task runs asynchronously in a detached worker. ${EXECUTION_NOT_VERDICT}`,
+      description: `Create a bounded coding task for the local ZCode subordinate agent. workspace is the master agent project root and determines the ZCode Desktop project identity. The master agent decides whether to create a worktree; if it does, pass its existing absolute directory as optional worktree_path. The Bridge never creates, selects, or removes a worktree. Without worktree_path, ZCode runs directly in workspace. Optional model selects a ZCode provider_id/model_id for this session without changing the project default. Returns a TaskReceipt; the task runs asynchronously in a detached worker. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: zcodeTaskInputSchema,
       outputSchema: taskReceiptSchema,
     },
@@ -208,7 +217,7 @@ export function createBridgeServer(options: BridgeServerOptions): McpServer {
     "zcode_result",
     {
       title: "Read the terminal ZCode task result",
-      description: `Read the persisted TaskResult for a finished task. Returns TASK_NOT_FINISHED before a terminal state. 'completed' is not a Codex PASS: files_changed, tests, and decisions are normalized claims from the subordinate report and must be verified independently. ${EXECUTION_NOT_VERDICT}`,
+      description: `Read the persisted TaskResult for a finished task. Returns TASK_NOT_FINISHED before a terminal state. 'completed' is not a master-accepted PASS: files_changed, tests, and decisions are normalized claims from the subordinate report and must be verified independently. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: taskIdOnlyInputSchema,
       outputSchema: taskResultSchema,
     },
@@ -219,7 +228,7 @@ export function createBridgeServer(options: BridgeServerOptions): McpServer {
     "zcode_continue",
     {
       title: "Continue a ZCode task with master feedback",
-      description: `Continue a finished task with master feedback: reuses the task ID and workspace, increments the attempt, and preserves prior evidence. Allowed from completed, failed, or waiting_for_master. A decision flagged by ZCode is never auto-approved; Codex must provide the follow-up instruction. ${EXECUTION_NOT_VERDICT}`,
+      description: `Continue a finished task with master feedback: reuses the task ID and workspace, increments the attempt, and preserves prior evidence. Allowed from completed, failed, or waiting_for_master. A decision flagged by ZCode is never auto-approved; the master agent must provide the follow-up instruction. ${EXECUTION_NOT_VERDICT}`,
       inputSchema: zcodeContinueInputSchema,
       outputSchema: taskReceiptSchema,
     },
@@ -237,12 +246,12 @@ export function createBridgeServer(options: BridgeServerOptions): McpServer {
     async (args: { task_id: string }) => runTool(() => manager.cancelTask(args.task_id)),
   );
 
-  // Temporary experiment tool: verify whether Codex surfaces MCP progress notifications.
+  // Temporary experiment tool: verify whether the host surfaces MCP progress notifications.
   server.registerTool(
     "zcode_progress_probe",
     {
       title: "[Experiment] Check MCP progress display",
-      description: "Temporary read-only experiment. Sends three MCP progress notifications over three seconds to test whether Codex displays server progress while this tool runs. Does not start or modify a ZCode task.",
+      description: "Temporary read-only experiment. Sends three MCP progress notifications over three seconds to test whether the host displays server progress while this tool runs. Does not start or modify a ZCode task.",
     },
     async (ctx) => {
       const progressToken = ctx.mcpReq._meta?.progressToken;
@@ -271,7 +280,7 @@ export function createBridgeServer(options: BridgeServerOptions): McpServer {
             experiment: "mcp-progress-display",
             progress_token_received: progressToken !== undefined,
             notifications_sent: notificationsSent,
-            note: "The tool result confirms server delivery only; check whether Codex displayed progress while it was running.",
+            note: "The tool result confirms server delivery only; check whether the host displayed progress while it was running.",
           }, null, 2),
         }],
       };

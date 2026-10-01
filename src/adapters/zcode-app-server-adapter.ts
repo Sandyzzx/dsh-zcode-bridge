@@ -742,7 +742,7 @@ export class ZCodeAppServerAdapter implements CodingAgentAdapter {
         const messageText = error instanceof Error ? error.message : String(error);
         entry.onEvent({
           type: "interaction_reply_failed",
-          summary: `Could not deliver Codex's response to ZCode: ${messageText}`.slice(0, 1_500),
+          summary: `Could not deliver the master agent's response to ZCode: ${messageText}`.slice(0, 1_500),
           details: { request_id: requestId, method },
         });
       }
@@ -751,7 +751,7 @@ export class ZCodeAppServerAdapter implements CodingAgentAdapter {
       for (const id of pending!.requestIds) write({ id, result: response });
       entry.onEvent({
         type: "interaction_replied",
-        summary: `Codex replied to ZCode ${method === "interaction/requestPermission" ? "permission request" : "user input request"}`,
+        summary: `Master agent replied to ZCode ${method === "interaction/requestPermission" ? "permission request" : "user input request"}`,
         details: { request_id: requestId, method },
       });
       while (entry.interactions.size > 128) {

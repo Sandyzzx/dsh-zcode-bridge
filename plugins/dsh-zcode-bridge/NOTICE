@@ -1,5 +1,9 @@
-codex-zcode-bridge
-Copyright 2026 codex-zcode-bridge contributors
+dsh-zcode-bridge
+Copyright 2026 dsh-zcode-bridge contributors
+
+This project is a fork of codex-zcode-bridge (Copyright 2026 codex-zcode-bridge
+contributors), ported from a Codex marketplace plugin to a DeepSeek Harness
+bundle. The Bridge core is derived from that upstream project.
 
 The project as a whole is licensed under the Apache License, Version 2.0;
 see the LICENSE file. The following notice applies to adapted third-party code.

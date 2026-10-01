@@ -20,7 +20,7 @@ export function buildTaskPrompt(task: TaskPackage): string {
     `TASK ID: ${task.task_id}`,
     "You are a subordinate coding agent executing one bounded task inside the current working directory. Stay inside the workspace; do not touch files outside it.",
     `PROJECT WORKSPACE: ${task.workspace}`,
-    ...(task.worktree_path ? [`CODEX-SELECTED EXECUTION WORKTREE: ${task.worktree_path}. Make task changes in the current working directory, which is this worktree; the project workspace above identifies its parent project.`] : []),
+    ...(task.worktree_path ? [`MASTER-SELECTED EXECUTION WORKTREE: ${task.worktree_path}. Make task changes in the current working directory, which is this worktree; the project workspace above identifies its parent project.`] : []),
     ...(task.model ? [`REQUESTED ZCODE MODEL: ${task.model.provider_id}/${task.model.model_id}${task.model.reasoning_level ? ` (reasoning level: ${task.model.reasoning_level})` : ""}. The Bridge configures this model for the session.`] : []),
     ...(task.timeout_ms ? [`EXECUTION TIME LIMIT: ${task.timeout_ms} ms for this attempt.`] : []),
     `OBJECTIVE\n${bounded(task.objective, MAX_SECTION_CHARS)}`,
@@ -85,8 +85,8 @@ const OUTPUT_CONTRACT = [
 
 const DECISION_RULE = [
   "DECISION RULE",
-  "Use only this task package, this prompt, repository files you inspect, and available tools; do not assume access to Codex's conversation.",
-  "Do not choose unresolved items explicitly listed under OPEN DECISIONS; a later explicit Master Feedback decision resolves that item. Also escalate conflicting requirements or missing decisions that would materially change externally visible behavior, even when Codex did not list them. Record the exact question in issues and set needs_master_decision=true. Continue independent work that does not depend on the decision. For low-impact implementation choices, use the simplest consistent option and state the assumption in issues.",
+  "Use only this task package, this prompt, repository files you inspect, and available tools; do not assume access to the master agent's conversation.",
+  "Do not choose unresolved items explicitly listed under OPEN DECISIONS; a later explicit Master Feedback decision resolves that item. Also escalate conflicting requirements or missing decisions that would materially change externally visible behavior, even when the master agent did not list them. Record the exact question in issues and set needs_master_decision=true. Continue independent work that does not depend on the decision. For low-impact implementation choices, use the simplest consistent option and state the assumption in issues.",
 ].join("\n");
 
 function renderList(title: string, items: readonly string[]): string {

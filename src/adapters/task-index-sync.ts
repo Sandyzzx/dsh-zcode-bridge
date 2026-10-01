@@ -18,7 +18,7 @@ export interface DesktopTaskIndexEntry {
   readonly databasePath: string;
   /** Project identity used by ZCode Desktop to group this task. */
   readonly workspaceKey: string;
-  /** Effective directory used by the ZCode session (project root or Codex-created worktree). */
+  /** Effective directory used by the ZCode session (project root or master-created worktree). */
   readonly workspacePath: string;
   readonly sessionId: string;
   readonly bridgeTaskId: string;

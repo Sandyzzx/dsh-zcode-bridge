@@ -1,20 +1,22 @@
 {
-  "name": "codex-zcode-bridge",
+  "name": "dsh-zcode-bridge",
   "version": "1.0.0",
   "private": true,
-  "description": "本地 Codex 插件与 MCP 服务，用于委派和审查 ZCode 开发任务。",
+  "description": "DeepSeek Harness 插件与本地 MCP 服务，用于委派和审查 ZCode 开发任务。",
   "type": "module",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json && npm run build:plugin",
+    "build": "tsc --project tsconfig.json && npm run build:bundle",
     "build:test": "tsc --project tsconfig.test.json",
-    "build:plugin": "node scripts/build-plugin.mjs",
+    "build:bundle": "node scripts/build-bundle.mjs",
+    "build:plugin": "node scripts/build-bundle.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build:test && node --test \"dist-test/test/*.test.js\"",
-    "validate:plugin": "node scripts/validate-plugin.mjs",
+    "validate:bundle": "node scripts/validate-bundle.mjs",
+    "validate:plugin": "node scripts/validate-bundle.mjs",
     "bridge:mcp": "node dist/src/mcp/main.js"
   },
   "bin": {
@@ -24,7 +26,8 @@
     "@modelcontextprotocol/client": "^2.1.0",
     "@types/node": "^24.0.0",
     "esbuild": "^0.28.2",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "yaml": "^2.9.1"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.1.0",

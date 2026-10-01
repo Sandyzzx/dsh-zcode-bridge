@@ -5,7 +5,6 @@ dist-test/
 !test/**
 coverage/
 .tasks/
-plugins/codex-zcode-bridge/.mcp.local.json
 .env
 .env.*
 !.env.example

@@ -17,8 +17,8 @@ const serverEntry = path.join(repoRoot, "dist", "src", "mcp", "main.js");
 const model = { provider_id: "account:bigmodel-individual-coding-plan", model_id: "GLM-5.3-Flash" };
 const suffix = Date.now().toString(36);
 const taskIds = [`PARALLEL_A_${suffix}`, `PARALLEL_B_${suffix}`];
-const workspacePrefix = "codex-zcode-parallel-workspace-";
-const dataPrefix = "codex-zcode-parallel-data-";
+const workspacePrefix = "dsh-zcode-parallel-workspace-";
+const dataPrefix = "dsh-zcode-parallel-data-";
 const timeoutMs = 15 * 60 * 1000;
 const terminal = new Set(["completed", "failed", "cancelled", "waiting_for_master"]);
 const workspaces = [];
@@ -70,7 +70,7 @@ try {
   let stderr = "";
   transport.stderr?.setEncoding?.("utf8");
   transport.stderr?.on("data", (chunk) => { stderr = `${stderr}${String(chunk)}`.slice(-16_384); });
-  client = new Client({ name: "codex-zcode-bridge-parallel-e2e", version: "0.1.0" }, { capabilities: {} });
+  client = new Client({ name: "dsh-zcode-bridge-parallel-e2e", version: "0.1.0" }, { capabilities: {} });
   await client.connect(transport);
 
   const receipts = [];
@@ -137,16 +137,16 @@ try {
 
   // Repeat the overlap test for two sessions belonging to one project, using
   // real sibling Git worktrees prepared by this test harness (not by Bridge).
-  worktreeFixtureRoot = await mkdtemp(path.join(tmpdir(), "codex-zcode-worktree-e2e-"));
-  assertTempPath(worktreeFixtureRoot, "codex-zcode-worktree-e2e-");
+  worktreeFixtureRoot = await mkdtemp(path.join(tmpdir(), "dsh-zcode-worktree-e2e-"));
+  assertTempPath(worktreeFixtureRoot, "dsh-zcode-worktree-e2e-");
   const sourceProject = path.join(worktreeFixtureRoot, "source");
   const worktreeA = path.join(worktreeFixtureRoot, "worktree-a");
   const worktreeB = path.join(worktreeFixtureRoot, "worktree-b");
   mkdirSync(sourceProject);
   const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
   git(sourceProject, "init");
-  git(sourceProject, "config", "user.name", "Codex ZCode Bridge parallel E2E");
-  git(sourceProject, "config", "user.email", "codex-zcode-parallel-e2e@localhost");
+  git(sourceProject, "config", "user.name", "DSH ZCode Bridge parallel E2E");
+  git(sourceProject, "config", "user.email", "dsh-zcode-parallel-e2e@localhost");
   await writeFile(path.join(sourceProject, "README.md"), "temporary parallel session baseline\n", "utf8");
   git(sourceProject, "add", "README.md");
   git(sourceProject, "commit", "-m", "parallel E2E baseline");

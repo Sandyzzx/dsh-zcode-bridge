@@ -138,7 +138,7 @@ export async function runWorkerTask(options: RunWorkerTaskOptions): Promise<RunW
             record.created_at,
           );
           if (!interactionEvent) {
-            const fallback = interactionDecline(request.method, "Bridge could not publish this request to Codex");
+            const fallback = interactionDecline(request.method, "Bridge could not publish this request to the master agent");
             store.answerInteractionRequest(taskId, request.request_id, fallback, now().toISOString());
             return fallback;
           }
@@ -244,12 +244,12 @@ function interactionSummary(request: ZCodeInteractionRequest): string {
   if (request.method === "interaction/requestPermission") {
     const toolName = typeof params.toolName === "string" ? params.toolName : "tool";
     const reason = typeof params.reason === "string" ? `: ${params.reason}` : "";
-    return `ZCode is waiting for Codex to decide whether ${toolName} may proceed${reason}`;
+    return `ZCode is waiting for the master agent to decide whether ${toolName} may proceed${reason}`;
   }
   if (asRecord(params.schema).interaction === "plan_approval") {
-    return "ZCode is waiting for Codex to approve or reject its plan";
+    return "ZCode is waiting for the master agent to approve or reject its plan";
   }
-  return "ZCode is waiting for Codex to answer a question";
+  return "ZCode is waiting for the master agent to answer a question";
 }
 
 function publicInteractionDetails(request: ZCodeInteractionRequest): Record<string, unknown> {

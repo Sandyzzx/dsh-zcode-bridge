@@ -1,0 +1,27 @@
+{
+  "name": "dsh-zcode-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Delegate development tasks to your local ZCode runtime from DeepSeek Harness, follow progress, and review the changes.",
+  "icon": "./assets/icon.png",
+  "exports": {
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "server",
+    "worker",
+    "locale/*.json",
+    "assets/icon.png",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "licenses"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

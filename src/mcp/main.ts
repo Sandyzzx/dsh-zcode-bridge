@@ -8,10 +8,9 @@
 // manager's reconcile timer without touching detached workers, which must
 // survive server restarts.
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { findPackageRoot, loadPersistedRuntimeEnvironment } from "../runtime/resolver.js";
+import { bridgeSettingsDir, findPackageRoot, loadPersistedRuntimeEnvironment } from "../runtime/resolver.js";
 import { TaskStore } from "../store/task-store.js";
 import { DirectWorkspaceProvider } from "../workspace/direct-provider.js";
 import { BridgeTaskManager } from "../manager/task-manager.js";
@@ -64,7 +63,7 @@ async function main(): Promise<void> {
   // Plugin mode uses this stable per-user data location unless the config file
   // selects a separate task data directory.
   if (process.env["ZCODE_BRIDGE_PLUGIN_MODE"] === "1" && !runtimeEnv["ZCODE_BRIDGE_DATA_DIR"]?.trim()) {
-    runtimeEnv["ZCODE_BRIDGE_DATA_DIR"] = path.join(homedir(), ".codex", "codex-zcode-bridge");
+    runtimeEnv["ZCODE_BRIDGE_DATA_DIR"] = bridgeSettingsDir();
   }
   const { dataRoot, warning } = resolveDataRoot(runtimeEnv);
   if (warning) {
@@ -116,7 +115,7 @@ async function main(): Promise<void> {
   process.once("SIGINT", () => shutdown("SIGINT"));
   process.once("SIGTERM", () => shutdown("SIGTERM"));
 
-  console.error("[bridge] codex-zcode-bridge stdio MCP server ready");
+  console.error("[bridge] dsh-zcode-bridge stdio MCP server ready");
 }
 
 // Run the server only when this file is the process entry point (importing

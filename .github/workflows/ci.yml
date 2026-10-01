@@ -27,6 +27,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
-      - run: npm run validate:plugin
-      - name: Check generated plugin bundles are committed
-        run: git diff --exit-code -- plugins/codex-zcode-bridge/dist/bridge.mjs plugins/codex-zcode-bridge/worker/worker-main.mjs
+      - run: npm run validate:bundle
+      - name: Check generated dsh bundle artifacts are committed
+        run: git diff --exit-code -- plugins/dsh-zcode-bridge/server/bridge.mjs plugins/dsh-zcode-bridge/worker/worker-main.mjs

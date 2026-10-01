@@ -60,7 +60,7 @@ export function buildAccountProviderPayload(config: ZCodeRuntimeConfig): Account
   const revision = typeof table?.revision === "number" ? table.revision : 0;
   const resolvedBuiltinPath = path.resolve(config.providerBuiltinConfigFile);
   return {
-    revision: `account:codex-zcode-bridge:${Date.now()}`,
+    revision: `account:dsh-zcode-bridge:${Date.now()}`,
     basedOnZCodeBuiltinRevision: `zcode-builtin:${revision}:${createHash("sha256").update(resolvedBuiltinPath).digest("hex")}`,
     providers,
     states,

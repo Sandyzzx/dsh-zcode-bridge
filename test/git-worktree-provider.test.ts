@@ -36,7 +36,7 @@ test("snapshots dirty source files into an isolated task worktree and reuses it"
     const workspace = await provider.resolve(source, taskId);
     assert.equal(workspace.mode, "worktree");
     assert.equal(workspace.sourcePath, path.normalize(git(source, "rev-parse", "--show-toplevel").trim()));
-    assert.equal(workspace.branchName, `codex-zcode/${taskId}`);
+    assert.equal(workspace.branchName, `dsh-zcode/${taskId}`);
     assert.notEqual(workspace.canonicalPath, source);
     assert.equal(readFileSync(path.join(workspace.canonicalPath, "base.txt"), "utf8").replace(/\r\n/g, "\n"), "local edit\n");
     assert.equal(readFileSync(path.join(workspace.canonicalPath, "untracked.txt"), "utf8").replace(/\r\n/g, "\n"), "local untracked\n");

@@ -1,5 +1,5 @@
 // Local manual E2E: verify a session is indexed under this project's actual
-// workspace root while the task executes in a Codex-selected external worktree.
+// workspace root while the task executes in a master-selected external worktree.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -20,9 +20,9 @@ const fileName = "zcode-project-root-e2e-probe.txt";
 const expectedContent = `PROJECT_ROOT_E2E_${suffix}`;
 const timeoutMs = 15 * 60 * 1000;
 const terminal = new Set(["completed", "failed", "cancelled", "waiting_for_master"]);
-const tempParent = await mkdtemp(path.join(tmpdir(), "codex-zcode-project-root-e2e-"));
+const tempParent = await mkdtemp(path.join(tmpdir(), "dsh-zcode-project-root-e2e-"));
 const worktreePath = path.join(tempParent, "worktree");
-const dataRoot = await mkdtemp(path.join(tmpdir(), "codex-zcode-project-data-"));
+const dataRoot = await mkdtemp(path.join(tmpdir(), "dsh-zcode-project-data-"));
 const branch = `project-root-e2e-${suffix}`;
 const sourceStatus = execFileSync("git", ["-C", repoRoot, "status", "--porcelain"], { encoding: "utf8" });
 let client;
@@ -53,8 +53,8 @@ async function status() { return tool("zcode_status", { task_id: taskId }); }
 async function delay(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 try {
-  assertTempChild(tempParent, "codex-zcode-project-root-e2e-");
-  assertTempChild(dataRoot, "codex-zcode-project-data-");
+  assertTempChild(tempParent, "dsh-zcode-project-root-e2e-");
+  assertTempChild(dataRoot, "dsh-zcode-project-data-");
   git(repoRoot, "worktree", "add", "-b", branch, worktreePath, "HEAD");
   worktreeCreated = true;
 
@@ -62,7 +62,7 @@ try {
   childEnv.ZCODE_BRIDGE_DATA_DIR = dataRoot;
   childEnv.PYTHONDONTWRITEBYTECODE = "1";
   const transport = new StdioClientTransport({ command: process.execPath, args: [serverEntry], cwd: repoRoot, env: childEnv, stderr: "pipe" });
-  client = new Client({ name: "codex-zcode-project-root-e2e", version: "0.1.0" }, { capabilities: {} });
+  client = new Client({ name: "dsh-zcode-project-root-e2e", version: "0.1.0" }, { capabilities: {} });
   await client.connect(transport);
 
   const receipt = await tool("zcode_task", {
@@ -111,7 +111,7 @@ try {
   assert.equal(content, expectedContent);
   assert.deepEqual((await readdir(worktreePath)).filter((name) => name === fileName), [fileName]);
   assert.deepEqual(git(worktreePath, "status", "--porcelain").trim().split(/\r?\n/u), [`?? ${fileName}`]);
-  assert.equal(git(repoRoot, "status", "--porcelain"), sourceStatus, "the Codex project checkout must remain unchanged");
+  assert.equal(git(repoRoot, "status", "--porcelain"), sourceStatus, "the delegating project checkout must remain unchanged");
   console.log("PROJECT_ROOT_E2E_OK", JSON.stringify({ task_id: taskId, session_id: result.session_id, status: result.status, model: selected.details.model_id, indexed_project: repoRoot }));
 } catch (error) {
   failure = error;
@@ -134,8 +134,8 @@ try {
       execFileSync("git", ["-C", repoRoot, "worktree", "remove", "--force", worktreePath], { encoding: "utf8", windowsHide: true, stdio: "pipe" });
       execFileSync("git", ["-C", repoRoot, "branch", "-D", branch], { encoding: "utf8", windowsHide: true, stdio: "pipe" });
     }
-    assertTempChild(tempParent, "codex-zcode-project-root-e2e-");
-    assertTempChild(dataRoot, "codex-zcode-project-data-");
+    assertTempChild(tempParent, "dsh-zcode-project-root-e2e-");
+    assertTempChild(dataRoot, "dsh-zcode-project-data-");
     await rm(tempParent, { recursive: true, force: true });
     await rm(dataRoot, { recursive: true, force: true });
   } else {

@@ -1,5 +1,5 @@
 // Isolates every task in a task-specific Git worktree. The worktree is kept
-// after completion so Codex can review it and decide how to integrate changes.
+// after completion so the master agent can review it and decide how to integrate changes.
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -35,7 +35,7 @@ export class GitWorktreeWorkspaceProvider implements WorkspaceProvider {
     }
     const root = this.#git(sourcePath, ["rev-parse", "--show-toplevel"]).trim();
     const canonicalSource = realpathSync(root);
-    const branchName = `codex-zcode/${taskId}`;
+    const branchName = `dsh-zcode/${taskId}`;
     const worktreePath = path.join(this.#worktreesRoot, taskId);
 
     if (existsSync(worktreePath)) {
@@ -118,14 +118,14 @@ export class GitWorktreeWorkspaceProvider implements WorkspaceProvider {
   }
 
   #snapshotWorkingTree(sourcePath: string): string {
-    const indexFile = path.join(os.tmpdir(), `codex-zcode-bridge-index-${randomUUID()}`);
+    const indexFile = path.join(os.tmpdir(), `dsh-zcode-bridge-index-${randomUUID()}`);
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       GIT_INDEX_FILE: indexFile,
-      GIT_AUTHOR_NAME: "Codex ZCode Bridge",
-      GIT_AUTHOR_EMAIL: "codex-zcode-bridge@localhost",
-      GIT_COMMITTER_NAME: "Codex ZCode Bridge",
-      GIT_COMMITTER_EMAIL: "codex-zcode-bridge@localhost",
+      GIT_AUTHOR_NAME: "DSH ZCode Bridge",
+      GIT_AUTHOR_EMAIL: "dsh-zcode-bridge@localhost",
+      GIT_COMMITTER_NAME: "DSH ZCode Bridge",
+      GIT_COMMITTER_EMAIL: "dsh-zcode-bridge@localhost",
     };
     try {
       const head = this.#git(sourcePath, ["rev-parse", "HEAD"]);
@@ -147,7 +147,7 @@ export class GitWorktreeWorkspaceProvider implements WorkspaceProvider {
       const headTree = this.#git(sourcePath, ["rev-parse", `${head.trim()}^{tree}`]).trim();
       if (tree === headTree) return head.trim();
       return this.#git(sourcePath, [
-        "commit-tree", tree, "-p", head.trim(), "-m", "Codex ZCode Bridge task workspace snapshot",
+        "commit-tree", tree, "-p", head.trim(), "-m", "DSH ZCode Bridge task workspace snapshot",
       ], env).trim();
     } finally {
       rmSync(indexFile, { force: true });

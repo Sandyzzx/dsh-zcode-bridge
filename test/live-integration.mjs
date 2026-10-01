@@ -21,8 +21,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serverEntry = path.join(repoRoot, "dist", "src", "mcp", "main.js");
 const taskId = `mvp_add_${Date.now()}`;
-const workspacePrefix = "codex-zcode-mvp-workspace-";
-const dataPrefix = "codex-zcode-mvp-data-";
+const workspacePrefix = "dsh-zcode-mvp-workspace-";
+const dataPrefix = "dsh-zcode-mvp-data-";
 const waitTimeoutMs = 15 * 60 * 1000;
 const pollIntervalMs = 1_000;
 const terminalStates = new Set(["completed", "failed", "cancelled", "waiting_for_master"]);
@@ -83,11 +83,11 @@ function git(cwd, ...args) {
 const python = pickPython();
 const workspace = await mkdtemp(path.join(os.tmpdir(), workspacePrefix));
 const dataRoot = await mkdtemp(path.join(os.tmpdir(), dataPrefix));
-const requestedWorktreePath = path.join(os.tmpdir(), `codex-zcode-mvp-execution-${Date.now()}`);
+const requestedWorktreePath = path.join(os.tmpdir(), `dsh-zcode-mvp-execution-${Date.now()}`);
 const taskBranch = `live-e2e-${Date.now()}`;
 assertDisposablePath(workspace, workspacePrefix);
 assertDisposablePath(dataRoot, dataPrefix);
-assertDisposablePath(requestedWorktreePath, "codex-zcode-mvp-execution-");
+assertDisposablePath(requestedWorktreePath, "dsh-zcode-mvp-execution-");
 
 const verifierSource = [
   "import unittest",
@@ -108,8 +108,8 @@ const verifierSource = [
   "",
 ].join("\n");
 git(workspace, "init");
-git(workspace, "config", "user.name", "Codex ZCode Bridge E2E");
-git(workspace, "config", "user.email", "codex-zcode-e2e@localhost");
+git(workspace, "config", "user.name", "DSH ZCode Bridge E2E");
+git(workspace, "config", "user.email", "dsh-zcode-e2e@localhost");
 git(workspace, "config", "core.autocrlf", "false");
 await writeFile(path.join(workspace, "README.md"), "baseline\n", "utf8");
 git(workspace, "add", "README.md");
@@ -117,14 +117,14 @@ git(workspace, "commit", "-m", "temporary integration baseline");
 await writeFile(path.join(workspace, "README.md"), "dirty source snapshot\n", "utf8");
 git(workspace, "worktree", "add", "-b", taskBranch, requestedWorktreePath, "HEAD");
 await writeFile(path.join(requestedWorktreePath, "test_calculator.py"), verifierSource, "utf8");
-git(requestedWorktreePath, "config", "user.name", "Codex ZCode Bridge E2E");
-git(requestedWorktreePath, "config", "user.email", "codex-zcode-e2e@localhost");
+git(requestedWorktreePath, "config", "user.name", "DSH ZCode Bridge E2E");
+git(requestedWorktreePath, "config", "user.email", "dsh-zcode-e2e@localhost");
 git(requestedWorktreePath, "add", "test_calculator.py");
 git(requestedWorktreePath, "commit", "-m", "add integration verifier");
 const verifierHashBefore = sha256(verifierSource);
 const readmeHashBefore = sha256(await readFile(path.join(workspace, "README.md"), "utf8"));
 
-const client = new Client({ name: "codex-zcode-phase6-check", version: "0.1.0" }, { capabilities: {} });
+const client = new Client({ name: "dsh-zcode-phase6-check", version: "0.1.0" }, { capabilities: {} });
 const childEnv = Object.fromEntries(
   Object.entries(process.env).filter((entry) => typeof entry[1] === "string"),
 );

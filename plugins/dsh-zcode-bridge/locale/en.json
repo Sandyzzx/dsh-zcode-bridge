@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ZCode Bridge",
+    "description": "Delegate development tasks to your local ZCode runtime, follow progress in the conversation, and review the changes before accepting them."
+  }
+}

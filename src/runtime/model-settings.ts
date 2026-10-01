@@ -1,13 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { createMinimalOsEnv } from "./child-env.js";
 import { buildAccountProviderPayload, zcodeDataBaseDir, runtimeAuthReply } from "./account-provider.js";
 import { BridgeError } from "./errors.js";
-import { loadPersistedRuntimeEnvironment, NodeRuntimeResolver } from "./resolver.js";
+import { loadPersistedRuntimeEnvironment, NodeRuntimeResolver, bridgeSettingsDir } from "./resolver.js";
 import { ZCODE_SESSION_MODES, type ZCodeSessionMode } from "./session-preferences.js";
 import type { ZCodeRuntimeConfig } from "../interfaces.js";
 import { terminateProcessTree } from "../adapters/process-spawn.js";
@@ -245,7 +244,7 @@ export class ZCodeModelSettings {
 
   #updateConfig(update: (config: JsonRecord) => void): Promise<void> {
     const operation = this.#writeQueue.then(async () => {
-      const configPath = path.join(homedir(), ".codex", "codex-zcode-bridge", "runtime-config.json");
+      const configPath = path.join(bridgeSettingsDir(), "runtime-config.json");
       await mkdir(path.dirname(configPath), { recursive: true });
       let config: JsonRecord = {};
       try {
@@ -443,7 +442,7 @@ function modelCatalogCachePath(workspace: string, config: ZCodeRuntimeConfig, en
     zcodeHome: env.ZCODE_HOME ?? "",
   });
   const key = createHash("sha256").update(identity).digest("hex");
-  return path.join(homedir(), ".codex", "codex-zcode-bridge", "model-catalog", `${key}.json`);
+  return path.join(bridgeSettingsDir(), "model-catalog", `${key}.json`);
 }
 
 async function modelCatalogSourceFingerprint(config: ZCodeRuntimeConfig, env: NodeJS.ProcessEnv): Promise<string> {

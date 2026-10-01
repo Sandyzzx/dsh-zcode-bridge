@@ -1,0 +1,22 @@
+# dsh bundle patch: register the Bridge MCP server with the shipped dsh-mcp-client.
+#
+# install_bundle copies this bundle into the profile's node_modules, so the
+# server path is computed from DSH_PROFILE_DIR (set in every profile-launched
+# Harness process). `!!js` is the Loader's expression tag; the expression
+# throws a clear error instead of spawning a broken path when the variable is
+# missing. `failOnStartupError: true` makes a Bridge that cannot start reject
+# activation instead of registering an empty tool set.
+#
+# Tools appear to the model as mcp__zcode_bridge__zcode_task and siblings.
+- insert:
+    - id: zcode-bridge-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: zcode_bridge
+        transport: stdio
+        command: node
+        args:
+          - !!js '(process.env.DSH_PROFILE_DIR || (() => { throw new Error("DSH_PROFILE_DIR is not set; the dsh-zcode-bridge bundle requires a profile-launched Harness") })()) + "/node_modules/dsh-zcode-bridge/server/bridge.mjs"'
+        env:
+          ZCODE_BRIDGE_PLUGIN_MODE: "1"
+        failOnStartupError: true

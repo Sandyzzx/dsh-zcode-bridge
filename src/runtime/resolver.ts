@@ -14,6 +14,15 @@ import { fileURLToPath } from "node:url";
 import { BridgeError } from "./errors.js";
 import type { RuntimeResolver, ZCodeRuntimeConfig } from "../interfaces.js";
 
+/**
+ * Per-user Bridge home directory: runtime-config.json, the model-catalog
+ * cache, and (in plugin mode) the task data root live here. The dsh profile
+ * owns ~/.dsh, so the Bridge keeps its files in a dedicated subdirectory.
+ */
+export function bridgeSettingsDir(homeDir = homedir()): string {
+  return path.join(homeDir, ".dsh", "zcode-bridge");
+}
+
 const PERSISTED_RUNTIME_KEYS = [
   "ZCODE_BRIDGE_NODE",
   "ZCODE_BRIDGE_ZCODE_CJS",
@@ -37,7 +46,7 @@ const PERSISTED_RUNTIME_KEYS = [
  * remain a fallback for standalone use and migration from older installs.
  */
 export function loadPersistedRuntimeEnvironment(source: NodeJS.ProcessEnv, homeDir = homedir()): NodeJS.ProcessEnv {
-  const settingsPaths = [path.join(homeDir, ".codex", "codex-zcode-bridge", "runtime-config.json")];
+  const settingsPaths = [path.join(bridgeSettingsDir(homeDir), "runtime-config.json")];
   const legacyDataRoot = source["ZCODE_BRIDGE_DATA_DIR"]?.trim();
   if (legacyDataRoot && path.isAbsolute(legacyDataRoot)) {
     settingsPaths.push(path.join(legacyDataRoot, "runtime-config.json"));
