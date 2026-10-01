@@ -69,8 +69,12 @@ const config = row.config ?? {};
 if (config.serverName !== "zcode_bridge") {
   throw new Error("patch config.serverName must be zcode_bridge (pattern [A-Za-z0-9_-]{1,32})");
 }
-if (config.transport !== "stdio" || config.command !== "node") {
-  throw new Error("patch config must launch node over stdio");
+if (config.transport !== "stdio") {
+  throw new Error("patch config transport must be stdio");
+}
+const command = typeof config.command === "string" ? config.command : config.command?.__jsExpr;
+if (typeof command !== "string" || !(command === "node" || command === "process.execPath")) {
+  throw new Error("patch config.command must launch Node (bare command or !!js process.execPath)");
 }
 if (config.env?.ZCODE_BRIDGE_PLUGIN_MODE !== "1") {
   throw new Error("patch config.env must set ZCODE_BRIDGE_PLUGIN_MODE=1");
