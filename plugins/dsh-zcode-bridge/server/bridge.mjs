@@ -23546,7 +23546,7 @@ var defaultModelSchema = object({
 
 // src/mcp/server.ts
 var SERVER_NAME = "dsh-zcode-bridge";
-var SERVER_VERSION = "2.0.0"; // x-release-please-version
+var SERVER_VERSION = "1.0.0"; // x-release-please-version
 var SERVER_INSTRUCTIONS = `Delegate bounded development tasks to the local ZCode agent, then track and review them.
 
 Flow: zcode_task to submit (returns a TaskReceipt with task_id), zcode_events to poll progress (use after_seq plus wait_ms up to 25000; interaction_requested events carry pending permission or user-input requests), zcode_result once finished. zcode_continue reuses a task with master feedback; zcode_cancel stops a queued or running task. zcode_doctor gives read-only setup diagnostics. zcode_model_catalog, zcode_default_model, and zcode_set_default_model manage ZCode provider/model selection; per-task model overrides exist in zcode_task.

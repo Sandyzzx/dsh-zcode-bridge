@@ -40,7 +40,7 @@ import { BridgeError } from "../runtime/errors.js";
 import type { ZCodeModelSettings } from "../runtime/model-settings.js";
 
 export const SERVER_NAME = "dsh-zcode-bridge";
-export const SERVER_VERSION = "2.0.0"; // x-release-please-version
+export const SERVER_VERSION = "1.0.0"; // x-release-please-version
 
 // Server instructions reach the delegating agent as prompt text (in dsh they
 // join the logged system prompt). Keep them short, factual, and within the

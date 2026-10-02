@@ -4,25 +4,6 @@
 
 仓库当前版本基线为 `0.4.0`。提交推送到 `master` 后，Release Please 会在有待发布变更时创建发布 PR，并同步更新版本文件与本日志；合并发布 PR 后会生成对应 Git tag 和 GitHub Release。
 
-## [2.0.0](https://github.com/Sandyzzx/dsh-zcode-bridge/compare/codex-zcode-bridge-v1.0.0...dsh-zcode-bridge-v2.0.0) (2026-10-02)
-
-
-### ⚠ BREAKING CHANGES
-
-* the Codex marketplace plugin is replaced by a DeepSeek Harness bundle
-
-### Features
-
-* **manager:** respawn a worker that dies before writing any task state ([995e476](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/995e47635166d9cf5a843c277ed3c4041f9cf2ff))
-* port codex-zcode-bridge fork to a DeepSeek Harness (dsh) bundle ([d6909c3](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/d6909c3537cd95642599a80a3f60b512e46f0f39))
-
-
-### Bug Fixes
-
-* **bundle:** survive junction installs and non-profile launches ([cc1e221](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/cc1e221345c3540b251c5de53da23cd65d57cfa7))
-* **manager:** cold-start grace window before finalizing worker_lost ([5ca5875](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/5ca5875a0eb40e5d6749ee7f20c80deee032b766))
-* **scripts:** accept process.execPath command form in bundle validation ([d5412e5](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/d5412e52e3e4d774fc7de784306ac94cd8eb33b0))
-
 ## [1.0.0](https://github.com/Sandyzzx/codex-zcode-bridge/compare/codex-zcode-bridge-v0.10.1...codex-zcode-bridge-v1.0.0) (2026-09-30)
 
 
