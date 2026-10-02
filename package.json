@@ -9,12 +9,15 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json && npm run build:bundle",
-    "build:test": "tsc --project tsconfig.test.json",
+    "build": "npm run validate:core && npm run build:host && npm run build:bundle",
+    "build:host": "node scripts/build-core.mjs",
+    "build:test": "node scripts/build-tests.mjs",
     "build:bundle": "node scripts/build-bundle.mjs",
     "build:plugin": "node scripts/build-bundle.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build:test && node --test \"dist-test/test/*.test.js\"",
+    "test": "npm run validate:core && npm run build:test && node scripts/test-isolated.mjs",
+    "core:update": "node scripts/update-core.mjs",
+    "validate:core": "node scripts/validate-core.mjs",
     "validate:bundle": "node scripts/validate-bundle.mjs",
     "validate:plugin": "node scripts/validate-bundle.mjs",
     "bridge:mcp": "node dist/src/mcp/main.js"
@@ -30,6 +33,7 @@
     "yaml": "^2.9.1"
   },
   "dependencies": {
+    "codex-zcode-bridge": "file:vendor/codex-zcode-bridge-1.0.3-b09a391.tgz",
     "@modelcontextprotocol/server": "^2.1.0",
     "zod": "^4.6.5"
   }

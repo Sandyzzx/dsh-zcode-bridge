@@ -41,6 +41,9 @@ const patchRelPath = bundle.dsh?.bundle?.patch;
 if (typeof patchRelPath !== "string" || !patchRelPath.startsWith("./")) {
   throw new Error("bundle package.json must declare dsh.bundle.patch as a relative path");
 }
+if (!bundle.files?.includes("cordis.patch.yml") || !bundle.files?.includes("SECURITY.md")) {
+  throw new Error("bundle files must include its activation patch and security policy");
+}
 const patchPath = path.join(bundleRoot, patchRelPath);
 await access(patchPath);
 if (bundle.icon) {
@@ -112,7 +115,11 @@ for (const locale of ["en", "zh"]) {
 
 const serverBundle = await readFile(path.join(bundleRoot, "server", "bridge.mjs"), "utf8");
 const workerBundle = await readFile(path.join(bundleRoot, "worker", "worker-main.mjs"), "utf8");
+const corePin = await readJson(path.join(root, "vendor/core-lock.json"), "shared core provenance");
 for (const [label, text] of [["server/bridge.mjs", serverBundle], ["worker/worker-main.mjs", workerBundle]]) {
+  if (!text.includes(`// Shared core: ${corePin.repository} at ${corePin.commit}`)) {
+    throw new Error(`${label} was built from a different core pin; run npm run build`);
+  }
   if (/from\s+["'](?!node:)[^][./@]/.test(text)) {
     throw new Error(`${label} must be self-contained (no bare module imports)`);
   }
@@ -120,5 +127,6 @@ for (const [label, text] of [["server/bridge.mjs", serverBundle], ["worker/worke
 if (!serverBundle.includes("dsh-zcode-bridge")) {
   throw new Error("server/bridge.mjs should carry the dsh-zcode-bridge server name");
 }
+if (!serverBundle.includes(`var SERVER_VERSION = "${pkg.version}";`)) throw new Error("bundle server version differs from host package");
 
 console.log(`dsh bundle is structurally valid (${bundle.name}@${bundle.version}).`);

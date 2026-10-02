@@ -11,7 +11,7 @@
           "path": "plugins/dsh-zcode-bridge/package.json",
           "jsonpath": "$.version"
         },
-        "src/mcp/server.ts",
+        "src/host/profile.ts",
         "plugins/dsh-zcode-bridge/server/bridge.mjs"
       ]
     }

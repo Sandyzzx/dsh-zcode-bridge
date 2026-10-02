@@ -1,4 +1,4 @@
-// Manual live smoke test for the ZCodeAdapter — NOT part of `npm test`.
+// Manual live smoke test for the shared app-server adapter — NOT part of npm test.
 // It performs exactly one real model invocation and creates exactly one file,
 // inside a disposable workspace under the system temp directory.
 //
@@ -9,7 +9,7 @@
 //      or ZCODE_WINDOWS_APP_INSTALL_DIR / LOCALAPPDATA + ZCODE_DATA_BASE_DIR so
 //      the RuntimeResolver can discover them (see docs/ZCODE_RUNTIME.md).
 //
-// Usage: npm run smoke
+// Usage: node test/live-smoke.mjs
 // On configuration or transient release errors this script reports and stops;
 // it never retries or bisects environment combinations.
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -17,13 +17,14 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { NodeRuntimeResolver } from "../dist/src/runtime/resolver.js";
-import { ZCodeAdapter } from "../dist/src/adapters/zcode-adapter.js";
+import { NodeRuntimeResolver, ZCodeAppServerAdapter } from "codex-zcode-bridge/core";
+import { dshHostProfile } from "../dist/src/host/profile.js";
 
 const workspace = await mkdtemp(path.join(tmpdir(), "zcode-adapter-smoke-"));
 const fileName = "zcode-adapter-smoke.txt";
 try {
-  const resolver = new NodeRuntimeResolver({ env: process.env });
+  const host = dshHostProfile();
+  const resolver = new NodeRuntimeResolver({ env: process.env, host });
   const config = await resolver.resolve();
   console.log("runtime resolved:", {
     nodeExecutable: config.nodeExecutable,
@@ -33,10 +34,10 @@ try {
     dataRoot: config.dataRoot,
   });
 
-  const adapter = new ZCodeAdapter({
+  const adapter = new ZCodeAppServerAdapter({
     resolver,
+    host,
     timeoutMs: 300_000,
-    promptTmpDir: workspace,
   });
   const task = {
     task_id: "adapter_smoke_1",

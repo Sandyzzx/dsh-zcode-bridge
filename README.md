@@ -11,7 +11,7 @@ Delegate coding tasks from your dsh agent to the local ZCode Agent. The dsh agen
 [![Node.js](https://img.shields.io/badge/Node.js-22.18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)](#)
 
-Forked from [codex-zcode-bridge](https://github.com/Sandyzzx/codex-zcode-bridge) (a Codex plugin); the Bridge core is unchanged and is now delivered as a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle. See [Fork notes](#fork-notes).
+Forked from [codex-zcode-bridge](https://github.com/Sandyzzx/codex-zcode-bridge) (a Codex plugin); the shared Bridge core is pinned as a dependency and delivered as a [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle. See [Fork notes](#fork-notes).
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -84,7 +84,7 @@ For richer delegation discipline (polling patterns, interaction replies, model-s
 
 - The ZCode Desktop sidebar may not immediately show a new session. The Bridge best-effort syncs the local task index; Desktop controls when the list refreshes.
 - ZCode Start Plan is currently unavailable through the Bridge.
-- A worker gets a 10-second cold-start grace window (`workerStartGraceMs`): within it, a missing or just-exited pid does not immediately finalize `worker_lost`; later reconcile ticks re-check. If a worker exits before writing `started.json` (it never ran the task), the Bridge respawns it once on the same attempt (a claim marker in the attempt directory prevents the Bridge processes sharing a data root from double-spawning); a worker that did start is never auto-respawned — the master decides whether to continue. There is still no global lock between processes, so do not submit conflicting tasks in parallel.
+- A worker gets a 10-second cold-start grace window (`workerStartGraceMs`): within it, a missing or just-exited pid does not immediately finalize `worker_lost`; later reconcile ticks re-check. If a worker exits before writing `started.json` (it never ran the task), the Bridge respawns it once on the same attempt (a claim marker in the attempt directory prevents the Bridge processes sharing a data root from double-spawning); a worker that did start is never auto-respawned — the master decides whether to continue. Scheduling is serialized across Bridge processes sharing one data root. Separate data roots do not coordinate conflicting workspace writes.
 
 ## Security and limitations
 
@@ -106,6 +106,8 @@ npm run validate:bundle
 ```
 
 The build writes the self-contained MCP server and worker into `plugins/dsh-zcode-bridge/{server,worker}`; both artifacts are committed so the bundle is installable without a build step.
+
+Shared core provenance, host boundaries, configuration migration and upgrade steps are documented in [docs/SHARED_CORE.md](docs/SHARED_CORE.md). The default tool set contains 12 stable tools; the experimental progress probe is disabled.
 
 ## Fork notes
 

@@ -4,6 +4,9 @@ dist-test/
 !test/
 !test/**
 coverage/
+.build-core-*/
+.build-test-*/
+audit/
 .tasks/
 .env
 .env.*

@@ -2,11 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import "./validate-core.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bundleRoot = path.join(repoRoot, "plugins", "dsh-zcode-bridge");
 const serverDir = path.join(bundleRoot, "server");
 const workerDir = path.join(bundleRoot, "worker");
+const corePin = JSON.parse(await readFile(path.join(repoRoot, "vendor/core-lock.json"), "utf8"));
 await Promise.all([mkdir(serverDir, { recursive: true }), mkdir(workerDir, { recursive: true })]);
 
 const shared = {
@@ -17,6 +19,7 @@ const shared = {
   sourcemap: false,
   packages: "bundle",
   logLevel: "info",
+  banner: { js: `// Shared core: ${corePin.repository} at ${corePin.commit}` },
 };
 
 await Promise.all([

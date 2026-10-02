@@ -4,7 +4,7 @@ DeepSeek Harness（dsh）插件与本地 MCP 服务，用于把明确授权的�
 
 > **dsh 派发，ZCode 干活，dsh 审查。**
 
-本项目 fork 自 [codex-zcode-bridge](https://github.com/Sandyzzx/codex-zcode-bridge)（原 Codex 插件），Bridge 核心未变，交付形态改为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle。英文说明见 [README.md](README.md)。
+本项目 fork 自 [codex-zcode-bridge](https://github.com/Sandyzzx/codex-zcode-bridge)（原 Codex 插件），现在通过锁定的依赖制品共用 Bridge 核心，交付为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) bundle。英文说明见 [README.md](README.md)。
 
 ## 工作方式
 
@@ -67,7 +67,7 @@ ZCode Desktop 的 Workspace 视图按项目目录归类任务。安装或启动�
 
 - ZCode Desktop 侧栏可能不会立即刷新显示新会话；Bridge 会尽力同步本机任务索引，刷新时机由 Desktop 决定。
 - 目前无法通过 Bridge 使用 ZCode Start Plan。
-- worker 启动后有 10 秒冷启动宽限期（`workerStartGraceMs` 可配置）：宽限期内即使存活检查发现 pid 缺失或刚退出，也不会立即固化 `worker_lost`，由后续 tick 复查。若 worker 在写入 `started.json` 前就退出（从未执行任务），Bridge 会在同一 attempt 内自动重拉一次（以 attempt 目录内的抢占标记防止多个 Bridge 进程重复拉起）；已起步的 worker 死亡不会自动重拉，由 master 决定是否 continue。进程间仍无全局调度锁，请勿并行提交冲突任务。
+- worker 启动后有 10 秒冷启动宽限期（`workerStartGraceMs` 可配置）：宽限期内即使存活检查发现 pid 缺失或刚退出，也不会立即固化 `worker_lost`，由后续 tick 复查。若 worker 在写入 `started.json` 前就退出（从未执行任务），Bridge 会在同一 attempt 内自动重拉一次（以 attempt 目录内的抢占标记防止多个 Bridge 进程重复拉起）；已起步的 worker 死亡不会自动重拉，由 master 决定是否 continue。同一 data root 内的 Bridge 进程通过调度锁串行处理；不同 data root 不协调同一可变工作区的冲突写入。
 
 ## 安全与限制
 
@@ -86,6 +86,8 @@ npm run validate:bundle
 ```
 
 构建产物写入 `plugins/dsh-zcode-bridge/{server,worker}` 并随仓库提交，安装 bundle 无需本地构建。
+
+共享核心锁定、宿主边界、配置回退和升级步骤见 [docs/SHARED_CORE.md](docs/SHARED_CORE.md)。默认提供 12 个正式工具，实验性 progress probe 不启用。
 
 ## Fork 说明
 

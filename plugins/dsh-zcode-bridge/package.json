@@ -12,9 +12,11 @@
   "files": [
     "server",
     "worker",
+    "cordis.patch.yml",
     "locale/*.json",
     "assets/icon.png",
     "README.md",
+    "SECURITY.md",
     "LICENSE",
     "NOTICE",
     "licenses"
