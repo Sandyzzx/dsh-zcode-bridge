@@ -1,6 +1,6 @@
 {
   "name": "dsh-zcode-bridge",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Delegate development tasks to your local ZCode runtime from DeepSeek Harness, follow progress, and review the changes.",
