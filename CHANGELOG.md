@@ -4,6 +4,13 @@
 
 仓库当前版本基线为 `0.4.0`。提交推送到 `master` 后，Release Please 会在有待发布变更时创建发布 PR，并同步更新版本文件与本日志；合并发布 PR 后会生成对应 Git tag 和 GitHub Release。
 
+## [1.1.0](https://github.com/Sandyzzx/dsh-zcode-bridge/compare/dsh-zcode-bridge-v1.0.1...dsh-zcode-bridge-v1.1.0) (2026-10-03)
+
+
+### Features
+
+* ship ZCode Bridge delegation skill ([#9](https://github.com/Sandyzzx/dsh-zcode-bridge/issues/9)) ([bac49bf](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/bac49bf626651f04f329a3ca8de0fe6b50552d85))
+
 ## [1.0.1](https://github.com/Sandyzzx/dsh-zcode-bridge/compare/dsh-zcode-bridge-v1.0.0...dsh-zcode-bridge-v1.0.1) (2026-10-03)
 
 
