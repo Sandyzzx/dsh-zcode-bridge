@@ -30,13 +30,17 @@ await Promise.all([
 const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 const bridgeBundlePath = path.join(serverDir, "bridge.mjs");
 const bridgeBundle = await readFile(bridgeBundlePath, "utf8");
-const versionPattern = /var SERVER_VERSION = "[^"]+";/;
-if (!versionPattern.test(bridgeBundle)) {
-  throw new Error("Could not find the bundled SERVER_VERSION declaration.");
+const versionPattern = /var (SERVER_VERSION\d*) = "[^"]+";(?: \/\/ x-release-please-version)?/g;
+const versionDeclarations = [...bridgeBundle.matchAll(versionPattern)];
+if (versionDeclarations.length === 0) {
+  throw new Error("Could not find a bundled SERVER_VERSION declaration.");
 }
 await writeFile(
   bridgeBundlePath,
-  bridgeBundle.replace(versionPattern, `var SERVER_VERSION = "${packageJson.version}"; // x-release-please-version`),
+  bridgeBundle.replace(
+    versionPattern,
+    (_declaration, name) => `var ${name} = "${packageJson.version}"; // x-release-please-version`,
+  ),
   "utf8",
 );
 
