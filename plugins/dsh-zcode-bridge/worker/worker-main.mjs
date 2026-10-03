@@ -1,4 +1,4 @@
-// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at 34134b6a20481bbab9786e70ceeb3d50e468819f
+// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at 3c5b9168867986fe15894e5723015b3e1e775efe
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -160,7 +160,10 @@ var CRITICAL_EVENT_TYPES = /* @__PURE__ */ new Set([
   "interaction_requested",
   "interaction_reply_submitted",
   "cancelled",
-  "cancel_failed"
+  "cancel_failed",
+  "cleanup_unverified",
+  "outcome_checkpoint_failed",
+  "outcome_recovered"
 ]);
 var TaskStore = class {
   #dataRoot;
@@ -365,6 +368,22 @@ var TaskStore = class {
     if (!existsSync(file))
       return null;
     return this.#readJson(file);
+  }
+  writeWorkerHeartbeat(taskId2, attempt, heartbeat) {
+    withEventLock(path3.join(this.taskDir(taskId2), "state.lock"), () => {
+      const status = this.readStatus(taskId2);
+      const claim2 = this.readAttemptMeta(taskId2, attempt, "execution.claim");
+      if (status.attempt !== attempt || status.status !== "running" || status.worker_pid !== heartbeat.worker_pid || claim2?.pid !== heartbeat.worker_pid) {
+        throw new Error("stale or unowned worker heartbeat rejected");
+      }
+      this.#writeJsonAtomic(path3.join(this.attemptDir(taskId2, attempt), "heartbeat.json"), heartbeat);
+    });
+  }
+  readWorkerHeartbeat(taskId2, attempt) {
+    const value = this.readAttemptMeta(taskId2, attempt, "heartbeat.json");
+    if (!value || value.attempt !== attempt || !Number.isSafeInteger(value.worker_pid) || typeof value.heartbeat_at !== "string")
+      return null;
+    return value;
   }
   readAttemptText(taskId2, attempt, fileName) {
     const file = path3.join(this.attemptDir(taskId2, attempt), fileName);
@@ -773,7 +792,8 @@ function buildTaskResult(input) {
       tests: [],
       issues: [truncate(resolved.message, 2e3)],
       needs_master_decision: true,
-      error_code: resolved.code
+      error_code: resolved.code,
+      ...resolved.code === "cleanup_failed" && outcome?.reportCandidate ? { report_candidate: outcome.reportCandidate } : {}
     };
   }
   if (outcome.errorCode || outcome.reportError) {
@@ -916,13 +936,20 @@ function createWorkerSpawner(host) {
     mkdirSync3(attemptDir, { recursive: true });
     const stderrFd = openSync2(path4.join(attemptDir, "worker-stderr.log"), "a", 384);
     try {
+      const workerEnv = {
+        ...createWorkerEnv(process.env),
+        ...host ? { ZCODE_BRIDGE_HOST_PROFILE: JSON.stringify(host) } : {},
+        // DeepSeek Harness may host its MCP entrypoint inside Electron. Its
+        // executable is reusable for detached Node workers only in this mode.
+        ...process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}
+      };
       const child = spawn(process.execPath, [host?.workerEntryPath ?? workerEntryPath(), dataRoot2, taskId2, String(attempt)], {
         detached: true,
         shell: false,
         stdio: ["ignore", "ignore", stderrFd],
         windowsHide: true,
         cwd: dataRoot2,
-        env: { ...createWorkerEnv(process.env), ...host ? { ZCODE_BRIDGE_HOST_PROFILE: JSON.stringify(host) } : {} }
+        env: workerEnv
       });
       child.on("error", (error2) => console.error(`Bridge worker spawn failed: ${error2.message}`));
       child.unref();
@@ -1709,14 +1736,23 @@ var BridgeTaskManager = class {
       return;
     }
     const pid = status.worker_pid;
+    const heartbeat = this.#store.readWorkerHeartbeat(taskId2, status.attempt);
+    const heartbeatAt = heartbeat ? Date.parse(heartbeat.heartbeat_at) : Number.NaN;
+    const heartbeatAgeMs = this.#now().getTime() - heartbeatAt;
+    if (pid !== null && heartbeat?.worker_pid === pid && heartbeatAgeMs >= 0 && heartbeatAgeMs <= 15e3)
+      return;
     const alive = pid !== null && this.#isProcessRunning(pid);
     if (alive)
       return;
-    const runtimePid = this.#store.readStatus(taskId2).zcode_pid;
+    const runtimePid = status.zcode_pid ?? null;
     if (runtimePid && this.#isProcessRunning(runtimePid)) {
+      if (this.#recoverOutcomeCheckpoint(taskId2, status, runtimePid, false))
+        return;
       this.#store.writeStatus(taskId2, { cleanup_unverified: true, error_code: "cleanup_failed", error: "Worker exited while ZCode remains alive; cancel to verify runtime cleanup" });
       return;
     }
+    if (this.#recoverOutcomeCheckpoint(taskId2, status, runtimePid, true))
+      return;
     const startedAtMs = status.started_at === null ? Number.NaN : Date.parse(status.started_at);
     const withinGrace = Number.isFinite(startedAtMs) && this.#now().getTime() - startedAtMs < this.#workerStartGraceMs;
     const workerBegan = this.#store.readAttemptMeta(taskId2, status.attempt, "started.json") !== null;
@@ -1760,6 +1796,59 @@ var BridgeTaskManager = class {
       worker_pid: null
     });
     this.#store.appendEvent(taskId2, "error", result.summary, { error_code: "worker_lost" }, finishedAt);
+  }
+  #recoverOutcomeCheckpoint(taskId2, status, runtimePid, runtimeExited) {
+    const checkpoint = this.#store.readAttemptMeta(taskId2, status.attempt, "outcome-checkpoint.json");
+    if (!checkpoint || typeof checkpoint.response !== "string")
+      return false;
+    const outcome = {
+      attempts: 1,
+      cancelled: false,
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      stdout: checkpoint.response,
+      stderr: "",
+      exitCode: typeof checkpoint.exit_code === "number" ? checkpoint.exit_code : null,
+      signal: typeof checkpoint.signal === "string" ? checkpoint.signal : null,
+      sessionId: typeof checkpoint.session_id === "string" ? checkpoint.session_id : null,
+      response: checkpoint.response,
+      usage: checkpoint.usage && typeof checkpoint.usage === "object" ? checkpoint.usage : null,
+      timedOut: false,
+      agentReport: checkpoint.agent_report ?? null,
+      reportCandidate: checkpoint.report_candidate && typeof checkpoint.report_candidate === "object" ? checkpoint.report_candidate : null,
+      reportError: typeof checkpoint.report_error === "string" ? checkpoint.report_error : null,
+      errorCode: typeof checkpoint.error_code === "string" ? checkpoint.error_code : null,
+      cleanupError: typeof checkpoint.cleanup_error === "string" ? checkpoint.cleanup_error : null,
+      cleanupVerified: checkpoint.cleanup_verified === true
+    };
+    const cleanupVerified = outcome.cleanupVerified && runtimeExited;
+    const failure2 = cleanupVerified ? null : {
+      code: "cleanup_failed",
+      message: outcome.cleanupError ?? "Worker exited before process cleanup could be verified; the ZCode result was recovered from its private checkpoint"
+    };
+    const finishedAt = this.#now().toISOString();
+    const result = buildTaskResult({
+      task: this.#store.readTask(taskId2),
+      attempt: status.attempt,
+      startedAt: status.started_at,
+      finishedAt,
+      outcome,
+      failure: failure2,
+      sessionId: status.zcode_session_id ?? outcome.sessionId
+    });
+    this.#store.commitWorkerResult(taskId2, status.attempt, result, {
+      status: result.status,
+      finished_at: finishedAt,
+      exit_code: result.exit_code,
+      zcode_session_id: result.session_id,
+      error_code: result.error_code ?? null,
+      error: result.status === "failed" ? result.summary : null,
+      worker_pid: null,
+      cleanup_unverified: !cleanupVerified,
+      zcode_pid: cleanupVerified ? null : runtimePid
+    });
+    this.#store.appendEvent(taskId2, "outcome_recovered", cleanupVerified ? "Recovered the completed ZCode report after the worker exited before committing its result" : "Recovered the ZCode report, but process cleanup could not be verified", { status: result.status, cleanup_verified: cleanupVerified }, finishedAt);
+    return true;
   }
   #runningTaskIdsLocked() {
     return this.#store.listTaskIds().filter((taskId2) => {
@@ -22954,6 +23043,7 @@ var ZCodeAppServerAdapter = class {
   #host;
   #now;
   #resolveInteraction;
+  #onOutcomeCheckpoint;
   #runs = /* @__PURE__ */ new Map();
   #workspaceByTask = /* @__PURE__ */ new Map();
   constructor(options = {}) {
@@ -22965,6 +23055,7 @@ var ZCodeAppServerAdapter = class {
     this.#host = validateHostProfile(options.host ?? codexHostProfile(this.#homeDir));
     this.#now = options.now ?? (() => /* @__PURE__ */ new Date());
     this.#resolveInteraction = options.resolveInteraction;
+    this.#onOutcomeCheckpoint = options.onOutcomeCheckpoint;
   }
   async startTask(input) {
     return this.#launch(input.task, input.workspace, input.attempt, buildTaskPrompt(input.task), null);
@@ -23270,11 +23361,9 @@ var ZCodeAppServerAdapter = class {
       entry.onEvent({ type: "turn_started", summary: "ZCode accepted the task and started a turn" });
       const turnResult = await turn;
       const desktopStatus = turnResult.resultType === "cancelled" ? null : turnResult.resultType && turnResult.resultType !== "success" ? "error" : "completed";
-      await syncDesktopStatus(desktopTask, desktopStatus, entry.onEvent);
-      await client.close();
-      entry.child = null;
+      let outcome;
       if (turnResult.resultType && turnResult.resultType !== "success") {
-        return {
+        outcome = {
           attempts: 1,
           cancelled: turnResult.resultType === "cancelled",
           stdout: turnResult.response,
@@ -23292,39 +23381,72 @@ var ZCodeAppServerAdapter = class {
           reportError: `ZCode turn ended with resultType ${turnResult.resultType}`,
           errorCode: turnResult.resultType === "cancelled" ? "cancelled" : "zcode_nonzero_exit"
         };
-      }
-      const parsed = parseAgentReport(turnResult.response);
-      const stdout = turnResult.response;
-      const base = {
-        attempts: 1,
-        cancelled: false,
-        stdoutTruncated: false,
-        stderrTruncated: false,
-        stdout,
-        stderr: "",
-        exitCode: 0,
-        signal: null,
-        sessionId,
-        response: turnResult.response,
-        usage: turnResult.usage,
-        timedOut: false,
-        reportCandidate: parsed.candidate
-      };
-      if (!parsed.report) {
-        return {
-          ...base,
-          agentReport: null,
-          reportCandidate: parsed.candidate,
-          reportError: parsed.error,
-          errorCode: "invalid_agent_report"
+      } else {
+        const parsed = parseAgentReport(turnResult.response);
+        const stdout = turnResult.response;
+        const base = {
+          attempts: 1,
+          cancelled: false,
+          stdoutTruncated: false,
+          stderrTruncated: false,
+          stdout,
+          stderr: "",
+          exitCode: 0,
+          signal: null,
+          sessionId,
+          response: turnResult.response,
+          usage: turnResult.usage,
+          timedOut: false,
+          reportCandidate: parsed.candidate
         };
+        if (!parsed.report) {
+          outcome = {
+            ...base,
+            agentReport: null,
+            reportCandidate: parsed.candidate,
+            reportError: parsed.error,
+            errorCode: "invalid_agent_report"
+          };
+        } else {
+          entry.onEvent({
+            type: "report_ready",
+            summary: "ZCode produced its structured execution report",
+            details: { needs_master_decision: parsed.report.needs_master_decision }
+          });
+          outcome = { ...base, agentReport: parsed.report, reportCandidate: parsed.report, reportError: null, errorCode: null };
+        }
       }
-      entry.onEvent({
-        type: "report_ready",
-        summary: "ZCode produced its structured execution report",
-        details: { needs_master_decision: parsed.report.needs_master_decision }
-      });
-      return { ...base, agentReport: parsed.report, reportCandidate: parsed.report, reportError: null, errorCode: null };
+      outcome = { ...outcome, cleanupVerified: false };
+      try {
+        this.#onOutcomeCheckpoint?.(outcome);
+      } catch (error2) {
+        entry.onEvent({ type: "outcome_checkpoint_failed", summary: error2 instanceof Error ? error2.message : String(error2) });
+      }
+      try {
+        await syncDesktopStatus(desktopTask, desktopStatus, entry.onEvent);
+      } catch (error2) {
+        entry.onEvent({ type: "desktop_status_sync_failed", summary: error2 instanceof Error ? error2.message : String(error2) });
+      }
+      try {
+        await client.close();
+        entry.child = null;
+        outcome = { ...outcome, cleanupVerified: true };
+        try {
+          this.#onOutcomeCheckpoint?.(outcome);
+        } catch (error2) {
+          entry.onEvent({ type: "outcome_checkpoint_failed", summary: error2 instanceof Error ? error2.message : String(error2) });
+        }
+      } catch (error2) {
+        const cleanupError = error2 instanceof Error ? error2.message : String(error2);
+        entry.onEvent({ type: "cleanup_unverified", summary: cleanupError.slice(0, 1500), details: { pid: client.child.pid } });
+        outcome = { ...outcome, cleanupError, cleanupVerified: false };
+        try {
+          this.#onOutcomeCheckpoint?.(outcome);
+        } catch (checkpointError) {
+          entry.onEvent({ type: "outcome_checkpoint_failed", summary: checkpointError instanceof Error ? checkpointError.message : String(checkpointError) });
+        }
+      }
+      return outcome;
     } catch (error2) {
       await syncDesktopStatus(desktopTask, entry.cancelRequested ? null : "error", entry.onEvent);
       entry.abort.abort();
@@ -23462,7 +23584,12 @@ var ZCodeAppServerAdapter = class {
           resolve();
         });
       });
-      if (child.pid && (!closed || process.platform !== "win32"))
+      if (closed) {
+        if (process.platform !== "win32" && child.pid)
+          await terminateProcessTree(child.pid);
+        return;
+      }
+      if (child.pid && isProcessRunning(child.pid))
         await terminateProcessTree(child.pid);
     };
     return { child, request, close, get stderr() {
@@ -23537,7 +23664,7 @@ var ZCodeAppServerAdapter = class {
         entry.turnId = turnId;
       if (type === "turn.started")
         entry.awaitingTurnStart = false;
-      this.#publishSessionEvent(type, payload, entry);
+      this.#publishSessionEvent(type, payload, entry, params);
       if (type === "turn.completed") {
         entry.acceptingTurn = false;
         entry.resolveTurn({
@@ -23629,11 +23756,15 @@ var ZCodeAppServerAdapter = class {
       }
     })().catch(() => entry.rejectTurn(new Error("ZCode interaction delivery failed")));
   }
-  #publishSessionEvent(type, payload, entry) {
+  #publishSessionEvent(type, payload, entry, event) {
     if (type === "turn.started") {
       entry.onEvent({
         type: "turn_started",
-        summary: `ZCode turn started${entry.selectedModel ? ` with selected model ${entry.selectedModel}` : ""}`
+        summary: `ZCode turn started${entry.selectedModel ? ` with selected model ${entry.selectedModel}` : ""}`,
+        details: {
+          ...typeof event.turnId === "string" ? { turn_id: event.turnId } : typeof payload.turnId === "string" ? { turn_id: payload.turnId } : {},
+          ...typeof event.seq === "number" ? { event_seq: event.seq } : {}
+        }
       });
     } else if (type === "model.streaming") {
       const kind = payload.kind;
@@ -23673,6 +23804,8 @@ var ZCodeAppServerAdapter = class {
         details: {
           ...typeof payload.tokenCount === "number" ? { token_count: payload.tokenCount } : {},
           ...typeof payload.toolCallCount === "number" ? { tool_call_count: payload.toolCallCount } : {},
+          ...typeof event.seq === "number" ? { event_seq: event.seq } : {},
+          ...typeof event.turnId === "string" ? { turn_id: event.turnId } : {},
           ...publicUsage(payload.usage) ? { usage: publicUsage(payload.usage) } : {}
         }
       });
@@ -23850,6 +23983,31 @@ async function runWorkerTask(options) {
     worker_pid: process.pid,
     started_at: startedAt
   });
+  const heartbeat = {
+    attempt,
+    worker_pid: process.pid,
+    started_at: startedAt,
+    heartbeat_at: now().toISOString(),
+    heartbeat_seq: 0,
+    session_id: initialStatus.zcode_session_id ?? null,
+    turn_id: null,
+    last_event_seq: 0,
+    last_event_type: "worker_running",
+    zcode_event_seq: 0
+  };
+  const persistHeartbeat = () => {
+    heartbeat.heartbeat_at = now().toISOString();
+    heartbeat.heartbeat_seq += 1;
+    store.writeWorkerHeartbeat(taskId2, attempt, heartbeat);
+  };
+  persistHeartbeat();
+  const heartbeatTimer = setInterval(() => {
+    try {
+      persistHeartbeat();
+    } catch {
+    }
+  }, 3e3);
+  heartbeatTimer.unref();
   const continueSpec = store.readAttemptMeta(taskId2, attempt, "continue.json");
   const previousResult = continueSpec ? store.readArchivedResult(taskId2, continueSpec.previous_attempt ?? attempt - 1) : null;
   const promptText = continueSpec ? buildContinuePrompt({
@@ -23888,12 +24046,38 @@ async function runWorkerTask(options) {
           return;
         }
         flushModelOutput();
-        store.appendEvent(taskId2, event.type, event.summary, event.details);
+        const persistedEvent = store.appendEvent(taskId2, event.type, event.summary, event.details);
+        if (persistedEvent) {
+          heartbeat.last_event_seq = persistedEvent.seq;
+          heartbeat.last_event_type = event.type;
+        }
         const sessionId = event.type === "session_ready" ? event.details?.["session_id"] : void 0;
-        if (typeof sessionId === "string")
+        if (typeof sessionId === "string") {
+          heartbeat.session_id = sessionId;
           store.writeStatus(taskId2, { zcode_session_id: sessionId }, attempt);
+        }
+        if (event.type === "turn_started" && typeof event.details?.["turn_id"] === "string")
+          heartbeat.turn_id = event.details["turn_id"];
+        if (typeof event.details?.["event_seq"] === "number")
+          heartbeat.zcode_event_seq = event.details["event_seq"];
         if (event.type === "app_server_started" && typeof event.details?.["pid"] === "number")
           store.writeStatus(taskId2, { zcode_pid: event.details["pid"] }, attempt);
+      },
+      onOutcomeCheckpoint: (checkpoint) => {
+        store.writeAttemptMeta(taskId2, attempt, "outcome-checkpoint.json", {
+          recorded_at: now().toISOString(),
+          exit_code: checkpoint.exitCode,
+          signal: checkpoint.signal,
+          session_id: checkpoint.sessionId,
+          response: checkpoint.response,
+          usage: checkpoint.usage,
+          error_code: checkpoint.errorCode,
+          report_error: checkpoint.reportError,
+          agent_report: checkpoint.agentReport,
+          report_candidate: checkpoint.reportCandidate,
+          cleanup_error: checkpoint.cleanupError ?? null,
+          cleanup_verified: checkpoint.cleanupVerified === true
+        });
       },
       resolveInteraction: async (request, signal) => {
         store.assertWorkerAttempt(taskId2, attempt);
@@ -23952,6 +24136,8 @@ async function runWorkerTask(options) {
     } finally {
       clearInterval(cancelTimer);
     }
+    if (outcome.cleanupError)
+      failure2 = { code: "cleanup_failed", message: `ZCode returned a turn result, but process cleanup could not be verified: ${outcome.cleanupError}` };
     flushModelOutput();
   } catch (error2) {
     flushModelOutput();
@@ -23960,6 +24146,7 @@ async function runWorkerTask(options) {
       message: error2 instanceof Error ? error2.message : String(error2)
     };
   }
+  clearInterval(heartbeatTimer);
   const finishedAt = now().toISOString();
   store.assertWorkerAttempt(taskId2, attempt);
   const stdoutLog = store.appendLog(taskId2, "stdout", outcome?.stdout ? `${outcome.stdout}
@@ -23985,7 +24172,9 @@ async function runWorkerTask(options) {
       stdoutTruncated: outcome.stdoutTruncated,
       stderrTruncated: outcome.stderrTruncated,
       agentReport: outcome.agentReport,
-      reportCandidate: outcome.reportCandidate
+      reportCandidate: outcome.reportCandidate,
+      cleanupError: outcome.cleanupError ?? null,
+      cleanupVerified: outcome.cleanupVerified === true
     } : null,
     logs: { stdout_truncated: stdoutLog.truncated, stderr_truncated: stderrLog.truncated }
   });
