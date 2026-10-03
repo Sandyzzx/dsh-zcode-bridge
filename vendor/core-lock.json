@@ -1,10 +1,10 @@
 {
   "repository": "https://github.com/Sandyzzx/codex-zcode-bridge",
-  "commit": "3c5b9168867986fe15894e5723015b3e1e775efe",
+  "commit": "f36b8857e765df06900d289aed44e1f6539a6355",
   "version": "1.0.3",
-  "artifact": "vendor/codex-zcode-bridge-1.0.3-3c5b916.tgz",
-  "sha256": "5ecc3750ec5454aa5b54678f67cbd8261709378ad9c1b0a7f5c355512ac522db",
-  "integrity": "sha512-RdrjrvCiHqvvV8HbGCdbGwDFJG7UDGZmBAid6D0s8IsTezmzqCCBQCy8H1qF252U72t5M9s5wGhmkdfAawZsmA==",
+  "artifact": "vendor/codex-zcode-bridge-1.0.3-f36b885.tgz",
+  "sha256": "8cd178fef8b6ffc0e51b570124542d82f799b7812f8e04860c008cbd08964a58",
+  "integrity": "sha512-Z2FL0GpD+xPvFeJuli3MT6q/CsJjD4YpOxgwcJ0CEbFqiShsz4QaJJQkjVXOuct9ZaaDkVm33Y1wUhhnwGKKSA==",
   "modules": {
     "dist/src/adapters/agent-report.d.ts": "155cd6dd60c09cf255ce6d435efc2bd9c208913d4eb575393c640240d04959d0",
     "dist/src/adapters/agent-report.js": "6b8c024247ffbc7e3d16cde227fd1386af2ad0bea6bcc8bae151d15e4f8d05a9",
@@ -17,7 +17,7 @@
     "dist/src/adapters/zcode-adapter.d.ts": "856db3875dcf95af46c70f6fe38dc66a11c969149a2776f5bb21e9bf633f39ec",
     "dist/src/adapters/zcode-adapter.js": "94e5b1d6fe94bc01f6eb7f1e2e32fd4a5d3abaa90b1acf67b8db280d71fb4306",
     "dist/src/adapters/zcode-app-server-adapter.d.ts": "c77316d3489bd4f61d9cc00e5cc47fbc21c62593a235603add0b22c521f8bd47",
-    "dist/src/adapters/zcode-app-server-adapter.js": "24a7e2511404114db5a60e3802bcb60256953aa65e6016f61bbba0e9b4a4ee17",
+    "dist/src/adapters/zcode-app-server-adapter.js": "8937bb0908c1719405d08fd0790e29cbaa6148bd048c89fbeae20e390b572bcc",
     "dist/src/adapters/zcode-envelope-types.d.ts": "cda689211f2c99df62075f21689c4d42195554b2605f31ce6cabc3b90bebecb3",
     "dist/src/adapters/zcode-envelope-types.js": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881",
     "dist/src/adapters/zcode-loader.cjs": "bf3e8effd63504ac5782a26740d1258297286f4d4266a7d0e8d816a5084e4e2f",

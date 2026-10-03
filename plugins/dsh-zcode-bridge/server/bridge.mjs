@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at 3c5b9168867986fe15894e5723015b3e1e775efe
+// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at f36b8857e765df06900d289aed44e1f6539a6355
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)

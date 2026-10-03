@@ -1,4 +1,4 @@
-// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at 3c5b9168867986fe15894e5723015b3e1e775efe
+// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at f36b8857e765df06900d289aed44e1f6539a6355
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -23137,6 +23137,7 @@ var ZCodeAppServerAdapter = class {
       textOutputStarted: false,
       selectedModel: null,
       lastEventSeq: 0,
+      lastEventAt: Date.now(),
       interactions: /* @__PURE__ */ new Map(),
       abort: new AbortController(),
       acceptingTurn: false,
@@ -23359,7 +23360,33 @@ var ZCodeAppServerAdapter = class {
       entry.acceptingTurn = true;
       await client.request("session/send", { sessionId, content: prompt });
       entry.onEvent({ type: "turn_started", summary: "ZCode accepted the task and started a turn" });
-      const turnResult = await turn;
+      let replayInFlight = false;
+      let replayDisabled = false;
+      const replayTimer = setInterval(() => {
+        if (!entry.acceptingTurn || replayInFlight || replayDisabled || Date.now() - entry.lastEventAt < 1e4)
+          return;
+        replayInFlight = true;
+        void client.request("session/events", { sessionId, afterSeq: entry.lastEventSeq, limit: 500 }).then((value) => {
+          const events = asRecord3(value).events;
+          if (Array.isArray(events))
+            client.replayEvents(events);
+        }).catch((error2) => {
+          const message = error2 instanceof Error ? error2.message : String(error2);
+          if (message.includes("Unsupported ZCode app-server request") || message.includes("ZCode app-server request failed for session/events")) {
+            replayDisabled = true;
+            entry.onEvent({ type: "session_event_replay_unavailable", summary: "ZCode session event replay is unavailable; continuing with live event subscription" });
+          }
+        }).finally(() => {
+          replayInFlight = false;
+        });
+      }, 5e3);
+      replayTimer.unref();
+      let turnResult;
+      try {
+        turnResult = await turn;
+      } finally {
+        clearInterval(replayTimer);
+      }
       const desktopStatus = turnResult.resultType === "cancelled" ? null : turnResult.resultType && turnResult.resultType !== "success" ? "error" : "completed";
       let outcome;
       if (turnResult.resultType && turnResult.resultType !== "success") {
@@ -23558,7 +23585,7 @@ var ZCodeAppServerAdapter = class {
           reject(new Error(`ZCode app-server request timed out: ${method}`));
         }, RPC_TIMEOUT_MS);
         timer.unref();
-        pending.set(id, { resolve, reject, timer });
+        pending.set(id, { method, resolve, reject, timer });
         child.stdin.write(`${JSON.stringify({ id, method, params })}
 `, (error2) => {
           if (!error2)
@@ -23568,6 +23595,17 @@ var ZCodeAppServerAdapter = class {
           reject(error2);
         });
       });
+    };
+    const replayEvents = (events) => {
+      for (const event of events) {
+        const params = asRecord3(event);
+        if (typeof params.type !== "string")
+          continue;
+        this.#handleMessage({ method: "session/event", params }, entry, pending, config2, (reply) => {
+          child.stdin.write(`${JSON.stringify(reply)}
+`);
+        });
+      }
     };
     const close = async () => {
       if (closed) {
@@ -23592,7 +23630,7 @@ var ZCodeAppServerAdapter = class {
       if (child.pid && isProcessRunning(child.pid))
         await terminateProcessTree(child.pid);
     };
-    return { child, request, close, get stderr() {
+    return { child, request, replayEvents, close, get stderr() {
       return stderr;
     } };
   }
@@ -23636,7 +23674,7 @@ var ZCodeAppServerAdapter = class {
       pending.delete(id);
       if (message.error && typeof message.error === "object") {
         const error2 = message.error;
-        call.reject(new Error(`ZCode app-server request failed${typeof error2.code === "number" ? ` (code ${error2.code})` : ""}`));
+        call.reject(new Error(`ZCode app-server request failed for ${call.method}${typeof error2.code === "number" ? ` (code ${error2.code})` : ""}`));
       } else {
         call.resolve(message.result);
       }
@@ -23660,6 +23698,7 @@ var ZCodeAppServerAdapter = class {
           return;
         entry.lastEventSeq = params.seq;
       }
+      entry.lastEventAt = Date.now();
       if (type === "turn.started" && turnId)
         entry.turnId = turnId;
       if (type === "turn.started")

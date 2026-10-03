@@ -33,7 +33,7 @@
     "yaml": "^2.9.1"
   },
   "dependencies": {
-    "codex-zcode-bridge": "file:vendor/codex-zcode-bridge-1.0.3-3c5b916.tgz",
+    "codex-zcode-bridge": "file:vendor/codex-zcode-bridge-1.0.3-f36b885.tgz",
     "@modelcontextprotocol/server": "^2.1.0",
     "zod": "^4.6.5"
   }
