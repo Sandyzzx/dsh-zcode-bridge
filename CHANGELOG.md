@@ -4,6 +4,14 @@
 
 仓库当前版本基线为 `0.4.0`。提交推送到 `master` 后，Release Please 会在有待发布变更时创建发布 PR，并同步更新版本文件与本日志；合并发布 PR 后会生成对应 Git tag 和 GitHub Release。
 
+## [1.0.1](https://github.com/Sandyzzx/dsh-zcode-bridge/compare/dsh-zcode-bridge-v1.0.0...dsh-zcode-bridge-v1.0.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* adapt reliability repair from shared core ([19b2ba5](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/19b2ba52143fdc00399821f33302d0523b949253))
+* sync missed event recovery from shared core ([c64a361](https://github.com/Sandyzzx/dsh-zcode-bridge/commit/c64a3610ac859b496269d274707c49fd1e303243))
+
 ## [1.0.0](https://github.com/Sandyzzx/dsh-zcode-bridge/compare/dsh-zcode-bridge-v1.0.0...dsh-zcode-bridge-v1.0.0) (2026-10-03)
 
 

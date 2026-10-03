@@ -23358,7 +23358,7 @@ var BridgeError = class extends Error {
 
 // node_modules/codex-zcode-bridge/dist/src/mcp/server.js
 var SERVER_NAME = "codex-zcode-bridge";
-var SERVER_VERSION = "1.0.0"; // x-release-please-version
+var SERVER_VERSION = "1.0.1"; // x-release-please-version
 var EXECUTION_NOT_VERDICT = "Results describe Bridge/ZCode execution only: status 'completed' means the invocation and report normalization finished, NOT that the calling host accepted the work. the calling host must independently review the workspace diff and checks before deciding PASS.";
 function okResult(data) {
   return {
@@ -25174,7 +25174,7 @@ async function startBridge(host = codexHostProfile(), version2 = SERVER_VERSION)
 import { homedir as homedir5 } from "node:os";
 import path11 from "node:path";
 var SERVER_NAME2 = "dsh-zcode-bridge";
-var SERVER_VERSION2 = "1.0.0";
+var SERVER_VERSION2 = "1.0.1"; // x-release-please-version
 var SERVER_INSTRUCTIONS = `Delegate bounded development tasks to the local ZCode agent, then track and review them.
 
 Flow: zcode_task to submit (returns a TaskReceipt with task_id), zcode_events to poll progress (use after_seq plus wait_ms up to 25000; interaction_requested events carry pending permission or user-input requests), zcode_result once finished. zcode_continue reuses a task with review feedback; zcode_cancel stops a queued or running task. zcode_doctor gives read-only setup diagnostics. zcode_model_catalog, zcode_default_model, and zcode_set_default_model manage ZCode provider/model selection; per-task model overrides exist in zcode_task.

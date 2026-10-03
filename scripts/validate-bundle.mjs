@@ -127,6 +127,12 @@ for (const [label, text] of [["server/bridge.mjs", serverBundle], ["worker/worke
 if (!serverBundle.includes("dsh-zcode-bridge")) {
   throw new Error("server/bridge.mjs should carry the dsh-zcode-bridge server name");
 }
-if (!serverBundle.includes(`var SERVER_VERSION = "${pkg.version}";`)) throw new Error("bundle server version differs from host package");
+const serverVersions = [...serverBundle.matchAll(/var (SERVER_VERSION\d*) = "([^"]+)";(?: (\/\/ x-release-please-version))?/g)];
+if (serverVersions.length === 0 || serverVersions.some(([, , version]) => version !== pkg.version)) {
+  throw new Error("bundle server versions differ from host package");
+}
+if (serverVersions.some(([, , , marker]) => marker !== "// x-release-please-version")) {
+  throw new Error("bundle server versions must all be marked for Release Please updates");
+}
 
 console.log(`dsh bundle is structurally valid (${bundle.name}@${bundle.version}).`);

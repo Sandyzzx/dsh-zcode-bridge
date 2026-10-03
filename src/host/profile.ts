@@ -3,7 +3,7 @@ import path from "node:path";
 import type { BridgeHostProfile } from "codex-zcode-bridge/core";
 
 export const SERVER_NAME = "dsh-zcode-bridge";
-export const SERVER_VERSION = "1.0.0"; // x-release-please-version
+export const SERVER_VERSION = "1.0.1"; // x-release-please-version
 
 export const SERVER_INSTRUCTIONS = `Delegate bounded development tasks to the local ZCode agent, then track and review them.
 
