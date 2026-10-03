@@ -1,4 +1,4 @@
-// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at bf23b8b97bc8beb3016413da2a322d3d155690aa
+// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at 34134b6a20481bbab9786e70ceeb3d50e468819f
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -35,8 +35,8 @@ import { StringDecoder } from "node:string_decoder";
 import { mkdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path2 from "node:path";
-async function withProcessLock(directory, operation) {
-  const deadline = Date.now() + 3e4;
+async function withProcessLock(directory, operation, timeoutMs = 3e4) {
+  const deadline = Date.now() + timeoutMs;
   let release;
   while (!(release = tryAcquireProcessLock(directory))) {
     if (Date.now() >= deadline)
@@ -230,6 +230,15 @@ var TaskStore = class {
     if (!task || task.task_id !== taskId2 || typeof task.workspace !== "string" || !task.workspace || typeof task.objective !== "string" || [task.requirements, task.allowed_paths, task.forbidden_paths, task.acceptance_criteria, task.test_commands].some((items) => !Array.isArray(items) || items.some((item) => typeof item !== "string")))
       throw new Error(`corrupt task record: ${file}`);
     return task;
+  }
+  readSubmission(taskId2) {
+    const file = path3.join(this.taskDir(taskId2), "submission.json");
+    if (!existsSync(file))
+      return null;
+    return this.#readJson(file);
+  }
+  writeSubmission(taskId2, submission) {
+    this.#writeJsonAtomic(path3.join(this.taskDir(taskId2), "submission.json"), submission);
   }
   writeWorkspaceRef(taskId2, workspace) {
     this.#writeJsonAtomic(path3.join(this.taskDir(taskId2), "workspace.json"), workspace);
@@ -727,6 +736,8 @@ function toPublicStatus(status) {
 
 // node_modules/codex-zcode-bridge/dist/src/manager/task-manager.js
 import path5 from "node:path";
+import { createHash as createHash2 } from "node:crypto";
+import { existsSync as existsSync2, statSync as statSync3, writeFileSync as writeFileSync3 } from "node:fs";
 
 // node_modules/codex-zcode-bridge/dist/src/manager/normalize.js
 function buildTaskResult(input) {
@@ -1202,8 +1213,11 @@ var BridgeTaskManager = class {
   #dataRoot;
   #maxConcurrentWorkers;
   #workerStartGraceMs;
+  #recoveryCooldownMs;
   #timer = null;
   #mutex = Promise.resolve();
+  #queuedOperations = 0;
+  #recoveryPromise = null;
   constructor(options) {
     this.#store = options.store;
     this.#workspaceProvider = options.workspaceProvider;
@@ -1221,6 +1235,7 @@ var BridgeTaskManager = class {
       throw new RangeError("workerStartGraceMs must be a non-negative integer");
     }
     const pollIntervalMs = options.pollIntervalMs ?? 1e3;
+    this.#recoveryCooldownMs = pollIntervalMs;
     if (pollIntervalMs > 0) {
       this.#timer = setInterval(() => {
         void this.recoverTasks().catch((error2) => console.error("Bridge recovery failed:", error2 instanceof Error ? error2.message : String(error2)));
@@ -1237,7 +1252,17 @@ var BridgeTaskManager = class {
   }
   /** Scans all non-terminal tasks and reconciles them, then pumps the queue. */
   async recoverTasks() {
-    return this.#exclusive(async () => {
+    if (this.#recoveryPromise)
+      return this.#recoveryPromise;
+    const releaseRecovery = tryAcquireProcessLock(path5.join(this.#store.tasksRoot, ".recovery.lock"));
+    if (!releaseRecovery)
+      return;
+    const lastRunFile = path5.join(this.#store.tasksRoot, ".recovery-last-run");
+    if (this.#recoveryCooldownMs > 0 && existsSync2(lastRunFile) && Date.now() - statSync3(lastRunFile).mtimeMs < this.#recoveryCooldownMs) {
+      releaseRecovery();
+      return;
+    }
+    const run = this.#exclusive(async () => {
       for (const taskId2 of this.#store.listTaskIds()) {
         try {
           const status = this.#safeStatus(taskId2);
@@ -1254,12 +1279,47 @@ var BridgeTaskManager = class {
       }
       this.#pumpLocked();
     });
+    this.#recoveryPromise = run;
+    try {
+      await run;
+    } finally {
+      try {
+        if (this.#recoveryCooldownMs > 0) {
+          writeFileSync3(lastRunFile, String(Date.now()), { mode: 384 });
+        }
+      } finally {
+        releaseRecovery();
+        this.#recoveryPromise = null;
+      }
+    }
   }
   async createTask(task) {
     return this.#exclusive(async () => {
       this.#validateTaskPackage(task);
       if (this.#store.hasTask(task.task_id)) {
-        throw new TaskManagerError("TASK_ALREADY_EXISTS", `task_id already used: ${task.task_id}`);
+        const existing = this.#store.readTask(task.task_id);
+        const ref = this.#store.readWorkspaceRef(task.task_id);
+        const sameWorkspace = path5.resolve(task.workspace) === path5.resolve(ref?.requestedPath ?? existing.workspace);
+        const sameExecutionPath = task.worktree_path === void 0 ? existing.worktree_path === void 0 : existing.worktree_path !== void 0 && path5.resolve(task.worktree_path) === path5.resolve(ref?.canonicalPath ?? existing.worktree_path);
+        const normalizedRetry = {
+          ...task,
+          workspace: existing.workspace,
+          ...existing.worktree_path === void 0 ? { worktree_path: void 0 } : { worktree_path: existing.worktree_path }
+        };
+        const fingerprint2 = createHash2("sha256").update(stableJson2(normalizedRetry)).digest("hex");
+        const previous = this.#store.readSubmission(task.task_id);
+        const existingFingerprint = previous?.fingerprint ?? createHash2("sha256").update(stableJson2(existing)).digest("hex");
+        if (!sameWorkspace || !sameExecutionPath || existingFingerprint !== fingerprint2) {
+          throw new TaskManagerError("TASK_ID_CONFLICT", `task_id already belongs to a different request: ${task.task_id}`);
+        }
+        const status2 = this.#store.readStatus(task.task_id);
+        const receipt2 = previous?.receipt ?? {
+          task_id: task.task_id,
+          status: status2.status === "running" ? "running" : "queued",
+          created_at: status2.created_at
+        };
+        this.#store.writeSubmission(task.task_id, { fingerprint: fingerprint2, receipt: receipt2 });
+        return receipt2;
       }
       let workspaceRef;
       try {
@@ -1273,13 +1333,14 @@ var BridgeTaskManager = class {
       } catch (error2) {
         throw new TaskManagerError("TASK_INVALID", String(error2));
       }
+      const normalizedTask = {
+        ...task,
+        workspace: workspaceRef.sourcePath ?? workspaceRef.canonicalPath,
+        ...workspaceRef.mode === "worktree" ? { worktree_path: workspaceRef.canonicalPath } : { worktree_path: void 0 }
+      };
+      const fingerprint = createHash2("sha256").update(stableJson2(normalizedTask)).digest("hex");
       try {
-        const projectPath = workspaceRef.sourcePath ?? workspaceRef.canonicalPath;
-        this.#store.createTask({
-          ...task,
-          workspace: projectPath,
-          ...workspaceRef.mode === "worktree" ? { worktree_path: workspaceRef.canonicalPath } : { worktree_path: void 0 }
-        }, createdAt);
+        this.#store.createTask(normalizedTask, createdAt);
         this.#store.writeWorkspaceRef(task.task_id, workspaceRef);
       } catch (error2) {
         await this.#workspaceProvider.release(workspaceRef).catch(() => void 0);
@@ -1293,21 +1354,23 @@ var BridgeTaskManager = class {
         mode: workspaceRef.mode,
         ...workspaceRef.branchName ? { branch_name: workspaceRef.branchName } : {}
       }, createdAt);
+      const acceptedReceipt = { task_id: task.task_id, status: "queued", created_at: createdAt };
+      this.#store.writeSubmission(task.task_id, { fingerprint, receipt: acceptedReceipt });
       this.#pumpLocked();
       const status = this.#store.readStatus(task.task_id);
-      return {
+      const receipt = status.status === "running" ? {
         task_id: task.task_id,
-        status: status.status === "running" ? "running" : "queued",
+        status: "running",
         created_at: createdAt
-      };
+      } : acceptedReceipt;
+      if (receipt !== acceptedReceipt)
+        this.#store.writeSubmission(task.task_id, { fingerprint, receipt });
+      return receipt;
     });
   }
   async getStatus(taskId2) {
-    return this.#exclusive(async () => {
-      this.#requireTask(taskId2);
-      this.#reconcileOneLocked(taskId2);
-      return toPublicStatus(this.#store.readStatus(taskId2));
-    });
+    this.#requireTask(taskId2);
+    return toPublicStatus(this.#store.readStatus(taskId2));
   }
   async getEvents(input) {
     const afterSeq = input.after_seq ?? 0;
@@ -1327,9 +1390,8 @@ var BridgeTaskManager = class {
     }
     const deadline = Date.now() + waitMs;
     while (true) {
-      const page = await this.#exclusive(async () => {
+      const page = await (async () => {
         this.#requireTask(input.task_id);
-        this.#reconcileOneLocked(input.task_id);
         const status = this.#store.readStatus(input.task_id);
         const read = this.#store.readEvents(input.task_id, afterSeq, limit, input.view ?? "raw");
         return {
@@ -1340,16 +1402,15 @@ var BridgeTaskManager = class {
           has_more: read.hasMore,
           ...read.omittedEvents ? { omitted_events: read.omittedEvents } : {}
         };
-      });
+      })();
       if (page.events.length || isTerminalStatus(page.status) || Date.now() >= deadline)
         return page;
       await sleep2(Math.min(250, Math.max(1, deadline - Date.now())));
     }
   }
   async getResult(taskId2) {
-    return this.#exclusive(async () => {
+    return (async () => {
       this.#requireTask(taskId2);
-      this.#reconcileOneLocked(taskId2);
       const status = this.#store.readStatus(taskId2);
       if (!isTerminalStatus(status.status)) {
         throw new TaskManagerError("TASK_NOT_FINISHED", `task ${taskId2} is not finished (status: ${status.status})`);
@@ -1359,7 +1420,7 @@ var BridgeTaskManager = class {
         throw new TaskManagerError("TASK_NOT_FINISHED", `task ${taskId2} has terminal status ${status.status} but no persisted result`);
       }
       return result;
-    });
+    })();
   }
   async replyToInteraction(input) {
     return this.#exclusive(async () => {
@@ -1401,6 +1462,22 @@ var BridgeTaskManager = class {
         throw new TaskManagerError("TASK_INVALID", "additional_requirements must be an array of strings");
       }
       const status = this.#store.readStatus(taskId2);
+      const continueFingerprint = createHash2("sha256").update(stableJson2({ feedback: input.feedback, additional_requirements: input.additional_requirements ?? [] })).digest("hex");
+      if (input.operation_id !== void 0 && (typeof input.operation_id !== "string" || !input.operation_id.trim() || input.operation_id.length > 128)) {
+        throw new TaskManagerError("TASK_INVALID", "operation_id must be a non-empty string up to 128 characters");
+      }
+      if (input.operation_id) {
+        for (let attempt = 2; attempt <= status.attempt; attempt += 1) {
+          const prior = this.#store.readAttemptMeta(taskId2, attempt, "continue.json");
+          if (prior?.operation_id !== input.operation_id)
+            continue;
+          if (prior.fingerprint !== continueFingerprint)
+            throw new TaskManagerError("CONTINUE_OPERATION_CONFLICT", "operation_id already belongs to different continuation input");
+          if (prior.receipt)
+            return prior.receipt;
+          return { task_id: taskId2, status: status.status === "running" ? "running" : "queued", created_at: status.created_at };
+        }
+      }
       if (!["completed", "failed", "waiting_for_master"].includes(status.status)) {
         throw new TaskManagerError("TASK_STATE", `zcode_continue is not allowed from status ${status.status}`);
       }
@@ -1425,8 +1502,10 @@ var BridgeTaskManager = class {
       }
       const nextAttempt = previousAttempt + 1;
       const createdAt = this.#now().toISOString();
+      const continuationReceipt = { task_id: taskId2, status: "queued", created_at: createdAt };
       this.#store.archiveResultToAttempt(taskId2, previousAttempt);
       this.#store.writeAttemptMeta(taskId2, nextAttempt, "continue.json", {
+        ...input.operation_id ? { operation_id: input.operation_id, fingerprint: continueFingerprint, receipt: continuationReceipt } : {},
         feedback: input.feedback,
         additional_requirements: [...input.additional_requirements ?? []],
         previous_session_id: previousResult?.session_id ?? status.zcode_session_id,
@@ -1448,11 +1527,17 @@ var BridgeTaskManager = class {
       });
       this.#pumpLocked();
       const after = this.#store.readStatus(taskId2);
-      return {
+      const receipt = {
         task_id: taskId2,
         status: after.status === "running" ? "running" : "queued",
         created_at: after.updated_at
       };
+      if (input.operation_id)
+        this.#store.writeAttemptMeta(taskId2, nextAttempt, "continue.json", {
+          ...this.#store.readAttemptMeta(taskId2, nextAttempt, "continue.json"),
+          receipt
+        });
+      return receipt;
     });
   }
   async cancelTask(taskId2) {
@@ -1805,10 +1890,41 @@ var BridgeTaskManager = class {
     }
   }
   #exclusive(operation) {
-    const locked = () => withProcessLock(path5.join(this.#store.tasksRoot, ".manager.lock"), operation);
+    if (this.#queuedOperations >= 32)
+      return Promise.reject(new TaskManagerError("BRIDGE_BUSY", "Bridge operation queue is full; retry with the same task_id"));
+    this.#queuedOperations += 1;
+    let started = false;
+    let expired = false;
+    let rejectTimeout;
+    const timeout = setTimeout(() => {
+      if (started)
+        return;
+      expired = true;
+      this.#queuedOperations = Math.max(0, this.#queuedOperations - 1);
+      rejectTimeout?.(new TaskManagerError("REQUEST_QUEUE_TIMEOUT", "Bridge operation did not start within 5 seconds; retry with the same task_id"));
+    }, 5e3);
+    const locked = async () => {
+      if (expired)
+        throw new TaskManagerError("REQUEST_QUEUE_TIMEOUT", "Bridge operation expired before it started");
+      started = true;
+      clearTimeout(timeout);
+      this.#queuedOperations = Math.max(0, this.#queuedOperations - 1);
+      try {
+        return await withProcessLock(path5.join(this.#store.tasksRoot, ".manager.lock"), operation, 5e3);
+      } catch (error2) {
+        if (error2 instanceof Error && error2.message.startsWith("timed out waiting for process lock:")) {
+          throw new TaskManagerError("REQUEST_QUEUE_TIMEOUT", "Bridge operation did not acquire the shared scheduling lock within 5 seconds; retry with the same task_id");
+        }
+        throw error2;
+      }
+    };
     const run = this.#mutex.then(locked, locked);
+    const bounded2 = new Promise((resolve, reject) => {
+      rejectTimeout = reject;
+      run.then(resolve, reject);
+    });
     this.#mutex = run.catch(() => void 0);
-    return run;
+    return bounded2;
   }
   #safeStatus(taskId2) {
     try {
@@ -1831,6 +1947,13 @@ function pathsOverlap(left, right) {
   const reverse = path5.relative(right, left);
   const inside = (value) => value === "" || !path5.isAbsolute(value) && value !== ".." && !value.startsWith(`..${path5.sep}`);
   return inside(relative) || inside(reverse);
+}
+function stableJson2(value) {
+  if (Array.isArray(value))
+    return `[${value.map(stableJson2).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson2(item)}`).join(",")}}`;
+  return JSON.stringify(value);
 }
 function buildInteractionAnswer(record2, input) {
   const params = record2.params;
@@ -21870,7 +21993,8 @@ var taskIdOnlyInputSchema = strictObject({
 var zcodeContinueInputSchema = strictObject({
   task_id: string2().min(1),
   feedback: string2().min(1),
-  additional_requirements: array(string2()).optional()
+  additional_requirements: array(string2()).optional(),
+  operation_id: string2().trim().min(1).max(128).optional()
 });
 var zcodeEventsInputSchema = strictObject({
   task_id: taskIdSchema,
@@ -22018,7 +22142,7 @@ var BridgeError = class extends Error {
 };
 
 // node_modules/codex-zcode-bridge/dist/src/runtime/resolver.js
-import { accessSync, existsSync as existsSync2, readFileSync as readFileSync3, statSync as statSync3 } from "node:fs";
+import { accessSync, existsSync as existsSync3, readFileSync as readFileSync3, statSync as statSync4 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
 import path6 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
@@ -22054,7 +22178,7 @@ function loadPersistedRuntimeEnvironment(source, homeDir = homedir2(), host = co
       continue;
     seenPaths.add(identity);
     try {
-      if (statSync3(normalized).size > 64 * 1024)
+      if (statSync4(normalized).size > 64 * 1024)
         throw new Error("runtime settings exceed 64 KB");
       const candidate = JSON.parse(readFileSync3(normalized, "utf8"));
       if (isPlainObject3(candidate)) {
@@ -22153,7 +22277,7 @@ var NodeRuntimeResolver = class {
           ...configuredDataBaseDirs(this.#homeDir),
           this.#homeDir
         ].filter((base) => Boolean(base)).filter((base, index, values) => values.indexOf(base) === index).map((base) => path6.join(base, ".zcode", "v2", "provider_config.json"));
-        const existing = candidates.filter((candidate) => existsSync2(candidate));
+        const existing = candidates.filter((candidate) => existsSync3(candidate));
         if (existing.length === 0) {
           throw new BridgeError("provider_config_missing", "ZCODE_PERSONAL_PROVIDER_CONFIG_FILE is not set and no personal provider config exists at any of: " + candidates.join(", "));
         }
@@ -22281,7 +22405,7 @@ function resolveZcodeHome(env) {
     throw new BridgeError("provider_config_invalid", "ZCODE_HOME must name a .zcode directory so app-server can use the same data root");
   }
   try {
-    if (!statSync3(resolved).isDirectory()) {
+    if (!statSync4(resolved).isDirectory()) {
       throw new BridgeError("provider_config_invalid", `ZCODE_HOME is not a directory: ${resolved}`);
     }
   } catch (error2) {
@@ -22298,7 +22422,7 @@ function samePath(left, right) {
 }
 function isReadableFile(filePath) {
   try {
-    if (!existsSync2(filePath) || !statSync3(filePath).isFile())
+    if (!existsSync3(filePath) || !statSync4(filePath).isFile())
       return false;
     accessSync(filePath);
     return true;
@@ -22309,7 +22433,7 @@ function isReadableFile(filePath) {
 function findPackageRoot(startDir) {
   let current = startDir ?? path6.dirname(fileURLToPath2(import.meta.url));
   for (let depth = 0; depth < 10; depth++) {
-    if (existsSync2(path6.join(current, "package.json"))) {
+    if (existsSync3(path6.join(current, "package.json"))) {
       return current;
     }
     const parent = path6.dirname(current);
@@ -22335,8 +22459,8 @@ function errorText(error2) {
 }
 
 // node_modules/codex-zcode-bridge/dist/src/runtime/account-provider.js
-import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync3, readFileSync as readFileSync4 } from "node:fs";
+import { createHash as createHash3 } from "node:crypto";
+import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
 import path7 from "node:path";
 function buildAccountProviderPayload(config2) {
   const table = readJson(config2.providerBuiltinConfigFile);
@@ -22373,7 +22497,7 @@ function buildAccountProviderPayload(config2) {
   const resolvedBuiltinPath = path7.resolve(config2.providerBuiltinConfigFile);
   return {
     revision: `account:codex-zcode-bridge:${Date.now()}`,
-    basedOnZCodeBuiltinRevision: `zcode-builtin:${revision}:${createHash2("sha256").update(resolvedBuiltinPath).digest("hex")}`,
+    basedOnZCodeBuiltinRevision: `zcode-builtin:${revision}:${createHash3("sha256").update(resolvedBuiltinPath).digest("hex")}`,
     providers,
     states
   };
@@ -22453,7 +22577,7 @@ function readProviderRules(table) {
 }
 function readJson(filePath) {
   try {
-    if (!existsSync3(filePath))
+    if (!existsSync4(filePath))
       return null;
     const value = JSON.parse(readFileSync4(filePath, "utf8"));
     return isRecord(value) ? value : null;
@@ -22677,7 +22801,7 @@ function isPlainObject4(value) {
 }
 
 // node_modules/codex-zcode-bridge/dist/src/adapters/task-index-sync.js
-import { existsSync as existsSync4 } from "node:fs";
+import { existsSync as existsSync5 } from "node:fs";
 var databaseSyncPromise = null;
 async function loadDatabaseSync() {
   databaseSyncPromise ??= import("node:sqlite").then((module) => module.DatabaseSync).catch(() => null);
@@ -22769,7 +22893,7 @@ function requireTaskTable(database) {
   }
 }
 async function withDatabase(databasePath, operation) {
-  if (!existsSync4(databasePath)) {
+  if (!existsSync5(databasePath)) {
     throw new Error("ZCode Desktop tasks-index database does not exist");
   }
   const DatabaseSync = await loadDatabaseSync();
