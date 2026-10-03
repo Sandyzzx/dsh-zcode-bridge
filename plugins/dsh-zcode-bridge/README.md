@@ -23,6 +23,7 @@ In a dsh session (Creator mode or the plugin_manager tool):
 1. Place this bundle directory on disk (clone the repository and use `plugins/dsh-zcode-bridge`, or install a published release archive).
 2. Call `plugin_manager` with `action: install_bundle` and the absolute bundle directory as `target`.
 3. Verify with `cordis_inspect_query` or by asking for the `mcp__zcode_bridge__zcode_doctor` tool output.
+4. To enable the delegation skill, copy `skills/zcode-bridge/SKILL.md` from the bundle to `%USERPROFILE%\.dsh\skills\zcode-bridge\SKILL.md` (create the directory if needed). The dsh filesystem skill provider discovers user-level skills; the plugin bundle cannot install a global skill automatically.
 
 The patch resolves the server path from `DSH_PROFILE_DIR`, which every profile-launched Harness provides. If activation fails with "DSH_PROFILE_DIR is not set", launch dsh with a profile, or edit `cordis.patch.yml` to hard-code the absolute path to `server/bridge.mjs` in your installation.
 

@@ -37,6 +37,10 @@ bundle 通过 dsh 自带的 `@deepseek-ai/dsh-mcp-client` 注册本地 MCP 服�
 
 `install_bundle` 会把 bundle 复制进 profile 的 node_modules；patch 通过 `DSH_PROFILE_DIR` 计算服务器路径（profile 启动的 Harness 都会提供）。若激活报 "DSH_PROFILE_DIR is not set"，请用 profile 启动 dsh，或把 `cordis.patch.yml` 中的路径改为 `server/bridge.mjs` 的绝对路径。`failOnStartupError: true` 保证 Bridge 启动失败时拒绝激活，而不是静默注册空工具集。
 
+### 安装委派 skill
+
+发行 bundle 包含 `skills/zcode-bridge/SKILL.md`。如需启用，将它复制到 `%USERPROFILE%\.dsh\skills\zcode-bridge\SKILL.md`（按需创建目录），供 dsh filesystem skill provider 发现。MCP bundle 本身不能自动安装用户级 skill；是否可加载也取决于当前 dsh profile 是否暴露 skill provider 和 loader。
+
 ## 配置
 
 任务数据目录为 `%USERPROFILE%\.dsh\zcode-bridge\`（macOS/Linux 为 `~/.dsh/zcode-bridge/`）。可选设置写在该目录的 `runtime-config.json`（不存在可手动创建），键与上游一致：
@@ -61,7 +65,7 @@ bundle 通过 dsh 自带的 `@deepseek-ai/dsh-mcp-client` 注册本地 MCP 服�
 
 ZCode Desktop 的 Workspace 视图按项目目录归类任务。安装或启动问题可调用 `zcode_doctor` 获取只读诊断。
 
-更完整的委派纪律（轮询模式、交互回复、模型选择规则）见 [docs/BRIDGE_WORKFLOW.zh-CN.md](docs/BRIDGE_WORKFLOW.zh-CN.md)，可改编进你的 `AGENTS.md`。
+`zcode-bridge` skill 提供逐任务委派清单；参考正文见 [docs/BRIDGE_WORKFLOW.zh-CN.md](docs/BRIDGE_WORKFLOW.zh-CN.md)。
 
 ## 已知问题
 
@@ -92,7 +96,7 @@ npm run validate:bundle
 ## Fork 说明
 
 - fork 自 `codex-zcode-bridge` v1.0.0，从 Codex marketplace 插件移植为 dsh bundle。
-- Codex 插件面（`.codex-plugin`、`plugin.json`、`mcp.json`、`hooks/`、`skills/`）已移除；dsh 无 hook/skill 通道，首启检查改由 `zcode_doctor`、工具描述和 MCP server instructions 承担。
+- Codex 插件面（`.codex-plugin`、`plugin.json`、`mcp.json`、`hooks/`）已移除。dsh bundle 附带独立 skill 文件，需手动安装到 dsh 用户级 skills 目录；首启检查仍由 `zcode_doctor`、工具描述和 MCP server instructions 承担。
 - 数据目录从 `~/.codex/codex-zcode-bridge/` 迁移到 `~/.dsh/zcode-bridge/`；两者之间不做数据迁移。
 - MCP 服务器名为 `dsh-zcode-bridge`；dsh 侧 MCP 命名空间为 `zcode_bridge`。
 

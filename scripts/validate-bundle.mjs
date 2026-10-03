@@ -98,12 +98,23 @@ for (const relativePath of [
   "worker/worker-main.mjs",
   "locale/en.json",
   "locale/zh.json",
+  "skills/zcode-bridge/SKILL.md",
   "README.md",
   "LICENSE",
   "NOTICE",
   "SECURITY.md",
 ]) {
   await access(path.join(bundleRoot, relativePath));
+}
+
+const skillText = await readFile(path.join(bundleRoot, "skills/zcode-bridge/SKILL.md"), "utf8");
+const skillFrontmatter = skillText.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+if (!skillFrontmatter) {
+  throw new Error("skills/zcode-bridge/SKILL.md must begin with YAML frontmatter");
+}
+const skillMetadata = parse(skillFrontmatter[1]);
+if (skillMetadata?.name !== "zcode-bridge" || !skillMetadata.description?.trim() || !skillMetadata.whenToUse?.trim()) {
+  throw new Error("zcode-bridge skill must define name, description, and whenToUse frontmatter");
 }
 
 for (const locale of ["en", "zh"]) {

@@ -1,7 +1,10 @@
-# Bridge 委派工作流（面向主控 agent 的指引）
+---
+name: zcode-bridge
+description: 在通过 ZCode Bridge MCP 派发、跟进、续作、取消、复核或诊断委托任务前使用；尤其适用于启动失败、worker_lost、权限/输入请求和结果验收。
+whenToUse: 只要本轮涉及 zcode_task、zcode_events、zcode_continue、zcode_cancel、zcode_interaction_reply、zcode_result，或审查 ZCode Bridge 任务，就先加载此 skill。
+---
 
-> 本文档是 bundle 内 `skills/zcode-bridge/SKILL.md` 的参考正文。dsh MCP bundle 不会自动安装用户级 skill；按 README 的步骤将 skill 文件复制到 `~/.dsh/skills/zcode-bridge/SKILL.md`。文中的 `create_goal`/Goal 工具属于宿主环境能力：有则用，没有则按文中降级处理，不要声称已创建。
-
+# ZCode Bridge 委派工作流
 你是 Master（主控），ZCode 是执行一个有明确边界任务的 worker。仅委派用户已授权的实现工作。不同执行目录可并发；不得让主控与 ZCode 同时修改同一个实际执行目录。Bridge 会串行化共享执行目录的任务。
 
 ## 持续目标（可选，取决于宿主工具）
@@ -20,7 +23,7 @@
 
 ## 跟进
 
-1. `zcode_task` 返回后立即调用 `zcode_events`（`after_seq: 0, view: "summary"`），不要先做别的工作或只复述 queued receipt。先报告 `workspace_ready` 中的 `project_path`、`execution_path`（如有则说明主控准备的 worktree）和 queued/running 状态。按 `next_seq` 和 `wait_ms` 继续读取，直到出现 `turn_started`、明确启动失败或终态；不要忙轮询。
+1. `zcode_task` 返回后立即调用 `zcode_events`（`after_seq: 0, view: "summary"`），不要先做别的工作或只复述 queued receipt。先报告 `workspace_ready` 中的 `project_path`、`execution_path`（如有则说明主控准备的 worktree）和 queued/running 状态。按 `next_seq` 和 `wait_ms` 继续读取，直到出现 `turn_started`、明确启动失败或终态；禁止用 shell 命令、`Start-Sleep` 或其他 sleep 循环轮询。长轮询用 `zcode_events` 的 `wait_ms: 10000–25000`；需要立即刷新时用 `zcode_status`。
 2. 在 `turn_started` 后、等待模型输出前，先向用户报告：项目根目录、实际执行目录、ZCode session ID、runtime 实际报告的 provider/model、runtime 实际报告的思考档位和执行模式。思考档位从 `session_ready.details.reasoning_level` 或 `model_selected.details.reasoning_level` 读取；若只有 `requested_reasoning_level`，说明这是请求值而不是 runtime 确认值；两者都没有时明确说 runtime 未报告档位，不要用模型目录的默认档位冒充当前档位。模式来自 Bridge 配置，默认 `yolo`；若为 `yolo`，明确提醒普通工具操作可能不经审批且使用当前 OS 账户权限，并说明可将 `ZCODE_BRIDGE_MODE` 设为 `build`。若使用 worktree，说明它不是 OS 沙箱。模型字段缺失时明确说 runtime 没有报告；不要把用户请求的模型或项目默认值猜成实际已选模型。
 3. 如果在 `turn_started` 前失败，立即报告 Bridge 的启动错误；只有在 `session_ready` 已出现时才能声称 ZCode session 已创建。不存在 `session_ready` 时说明没有 ZCode session/model 元数据。
 4. 运行期间用 `zcode_events` 的 `after_seq` 读取增量事件，默认使用 `view: "summary"`，需要逐条文本时改用 `view: "raw"`；`next_seq` 会跨过已合并事件。`wait_ms` 可设为 10000–25000；如需快速刷新状态，可调用 `zcode_status`。向用户简短汇报模型可见输出和工具活动摘要。事件不包含隐藏推理；`interaction_requested` 会包含完成决定所需的有限请求细节。
@@ -47,3 +50,10 @@
 - ZCode 不得选择仍未解决的 `OPEN DECISIONS`；后续 Master Feedback 明确给出决定后，按新决定继续。即使未列出，遇到需求冲突或会实质改变外部行为的缺失决定，也要提出具体问题、设置 `needs_master_decision=true`，并继续不依赖该决定的工作。低影响实现选择可采用最简单一致的方案，同时报告假设。
 - 不要把 ZCode Hooks、Desktop 历史索引、自动化或并行 worker 当作已启用能力。
 - 不要为了方便而修改 ZCode provider 配置或将凭据写入任务 prompt、日志或仓库。
+
+
+## worker_lost 与异常诊断
+
+- `worker_lost` 是 Bridge 的终态分类，不等同于已找到根因。先核对本次运行实际加载的 Bridge bundle/core 版本、状态时间线、pid、`started.json` 是否存在，以及可访问的 attempt 诊断；没有这些证据时明确说“不确定”，不得从错误码、空 stderr 或历史修复推断本次根因。
+- 只读取当前任务相关的 attempt 文件。stderr 和日志可能含私有内容；向用户报告前先做必要脱敏，不要把原始日志贴进任务、prompt 或公开结果。
+- 不要把历史上已修复的 spawn race 或一次性 respawn 机制表述为本次问题已解决；确认实际运行的版本和事件证据后再下结论。
