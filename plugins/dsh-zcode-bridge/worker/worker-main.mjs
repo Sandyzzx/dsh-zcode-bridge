@@ -1,4 +1,4 @@
-// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at b09a3914d6baa5c56721b6aea77aa8ae0a8cc2a7
+// Shared core: https://github.com/Sandyzzx/codex-zcode-bridge at bf23b8b97bc8beb3016413da2a322d3d155690aa
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -22883,9 +22883,12 @@ var ZCodeAppServerAdapter = class {
     entry.cancelRequested = true;
     entry.abort.abort();
     entry.rejectTurn(new Error("ZCode task cancelled"));
-    const pid = entry.child?.pid;
-    if (pid)
-      await terminateProcessTree(pid);
+    try {
+      await entry.runPromise;
+    } catch (error2) {
+      if (!(error2 instanceof BridgeError) || error2.code !== "cancelled")
+        throw error2;
+    }
   }
   async #launch(task, workspace, attempt, prompt, resumeSessionId) {
     const handle = {
@@ -23805,7 +23808,26 @@ async function runWorkerTask(options) {
       previousSessionId: continueSpec.previous_session_id,
       previousResult
     }) : await adapter.startTask({ task, workspace: workspaceRef, attempt });
-    outcome = await adapter.getResult(handle);
+    let cancelTimer;
+    const cancellation = new Promise((_resolve, reject) => {
+      cancelTimer = setInterval(() => {
+        try {
+          const current = store.readStatus(taskId2);
+          if (current.attempt !== attempt || !current.cancel_requested)
+            return;
+          clearInterval(cancelTimer);
+          void adapter.cancelTask(handle).catch(reject);
+        } catch (error2) {
+          clearInterval(cancelTimer);
+          reject(error2);
+        }
+      }, 50);
+    });
+    try {
+      outcome = await Promise.race([adapter.getResult(handle), cancellation]);
+    } finally {
+      clearInterval(cancelTimer);
+    }
     flushModelOutput();
   } catch (error2) {
     flushModelOutput();
