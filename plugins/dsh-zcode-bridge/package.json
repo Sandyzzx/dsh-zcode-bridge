@@ -15,6 +15,7 @@
     "cordis.patch.yml",
     "locale/*.json",
     "assets/icon.png",
+    "skills",
     "README.md",
     "SECURITY.md",
     "LICENSE",

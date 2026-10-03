@@ -52,6 +52,10 @@ Requires Node.js 22.18+, Git, ZCode installed and signed in, and DeepSeek Harnes
 
 `install_bundle` copies the bundle into the profile's `node_modules`. The patch computes the server path from `DSH_PROFILE_DIR`, which every profile-launched Harness provides; if activation fails with "DSH_PROFILE_DIR is not set", launch dsh with a profile, or edit `cordis.patch.yml` to hard-code the absolute path to `server/bridge.mjs`. Tools appear to the model only after the MCP connection succeeds (`failOnStartupError: true` rejects activation on failure).
 
+### Install the delegation skill
+
+The release bundle includes `skills/zcode-bridge/SKILL.md`. Copy it to `%USERPROFILE%\.dsh\skills\zcode-bridge\SKILL.md` (create the directory if needed) so dsh's filesystem skill provider can discover it. The MCP bundle itself cannot install a global user skill. Skill availability also depends on the active dsh profile exposing its skill provider and loader.
+
 ### Configuration
 
 Task data lives in `%USERPROFILE%\.dsh\zcode-bridge\` (macOS/Linux: `~/.dsh/zcode-bridge/`). Optional settings go in `runtime-config.json` inside that directory (create it manually if needed). Keep the discovered path fields and change only the values you need:
@@ -78,7 +82,7 @@ In ZCode Desktop, find tasks in the Workspace view under the delegating project 
 
 For installation or startup problems, call `mcp__zcode_bridge__zcode_doctor` for read-only setup diagnostics. Use `zcode_model_catalog` to read model IDs and reasoning levels, pass `provider_id`/`model_id` in `zcode_task.model` for one task, and manage the default with `zcode_set_default_model` / `zcode_default_model` / `zcode_clear_default_model`.
 
-For richer delegation discipline (polling patterns, interaction replies, model-selection rules), see [docs/BRIDGE_WORKFLOW.zh-CN.md](docs/BRIDGE_WORKFLOW.zh-CN.md); you can adapt it into your `AGENTS.md`.
+The `zcode-bridge` skill provides the full per-task delegation checklist; its reference text is [docs/BRIDGE_WORKFLOW.zh-CN.md](docs/BRIDGE_WORKFLOW.zh-CN.md).
 
 ## Known issues
 
@@ -112,7 +116,7 @@ Shared core provenance, host boundaries, configuration migration and upgrade ste
 ## Fork notes
 
 - Forked from `codex-zcode-bridge` at v1.0.0 and ported from a Codex marketplace plugin to a dsh bundle.
-- Codex plugin surfaces (`.codex-plugin`, `plugin.json`, `mcp.json`, `hooks/`, `skills/`) were removed; dsh has no hook or skill channel, so first-run setup guidance moved to `zcode_doctor`, tool descriptions, and MCP server instructions.
+- Codex plugin surfaces (`.codex-plugin`, `plugin.json`, `mcp.json`, `hooks/`) were removed. The dsh bundle ships a standalone skill file for manual installation into dsh's user-level skill directory; first-run setup remains in `zcode_doctor`, tool descriptions, and MCP server instructions.
 - Bridge data moved from `~/.codex/codex-zcode-bridge/` to `~/.dsh/zcode-bridge/`; no data is migrated between them.
 - The MCP server name is `dsh-zcode-bridge`; the dsh MCP server namespace is `zcode_bridge`.
 
